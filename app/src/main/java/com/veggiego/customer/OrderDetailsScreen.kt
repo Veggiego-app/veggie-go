@@ -669,160 +669,163 @@ fun OrderDetailsScreen(
                         }
                     }
 
-                    item {
+                    if (currentOrder.status != "DELIVERED") {
 
-                        Card(
+                        item {
 
-                            shape =
-                                RoundedCornerShape(20.dp),
+                            Card(
 
-                            colors =
-                                CardDefaults.cardColors(
-                                    containerColor =
-                                        Color.White
-                                )
+                                shape =
+                                    RoundedCornerShape(20.dp),
 
-                        ) {
-
-                            Column(
-
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(18.dp)
+                                colors =
+                                    CardDefaults.cardColors(
+                                        containerColor =
+                                            Color.White
+                                    )
 
                             ) {
 
-                                Text(
-
-                                    text =
-                                        "Rider Details",
-
-                                    fontWeight =
-                                        FontWeight.Bold,
-
-                                    fontSize = 18.sp
-                                )
-
-                                Spacer(
-                                    modifier =
-                                        Modifier.height(12.dp)
-                                )
-
-                                Text(
-
-                                    text =
-                                        currentOrder.riderName
-                                            .ifEmpty {
-                                                "Rider not assigned"
-                                            },
-
-                                    fontWeight =
-                                        FontWeight.SemiBold
-                                )
-
-                                Spacer(
-                                    modifier =
-                                        Modifier.height(6.dp)
-                                )
-
-                                Text(
-
-                                    text =
-                                        currentOrder.riderPhone
-                                            .ifEmpty {
-                                                "Phone unavailable"
-                                            }
-                                )
-
-                                Spacer(
-                                    modifier =
-                                        Modifier.height(14.dp)
-                                )
-
-                                Button(
-
-                                    onClick = {
-
-                                        if (
-                                            currentOrder
-                                                .riderPhone
-                                                .isNotEmpty()
-                                        ) {
-
-                                            val intent =
-                                                Intent(
-                                                    Intent.ACTION_DIAL
-                                                )
-
-                                            intent.data =
-                                                Uri.parse(
-                                                    "tel:${currentOrder.riderPhone}"
-                                                )
-
-                                            context.startActivity(
-                                                intent
-                                            )
-                                        }
-                                    },
+                                Column(
 
                                     modifier =
-                                        Modifier.fillMaxWidth(),
-
-                                    colors =
-                                        ButtonDefaults.buttonColors(
-                                            containerColor =
-                                                Color(0xFF2E7D32)
-                                        ),
-
-                                    shape =
-                                        RoundedCornerShape(14.dp)
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(18.dp)
 
                                 ) {
 
-                                    Icon(
+                                    Text(
 
-                                        imageVector =
-                                            Icons.Default.Call,
+                                        text =
+                                            "Rider Details",
 
-                                        contentDescription = ""
+                                        fontWeight =
+                                            FontWeight.Bold,
+
+                                        fontSize = 18.sp
                                     )
 
                                     Spacer(
                                         modifier =
-                                            Modifier.width(8.dp)
+                                            Modifier.height(12.dp)
                                     )
 
                                     Text(
-                                        text = "Call Rider"
+
+                                        text =
+                                            currentOrder.riderName
+                                                .ifEmpty {
+                                                    "Rider not assigned"
+                                                },
+
+                                        fontWeight =
+                                            FontWeight.SemiBold
                                     )
 
-                                }
-                                Spacer(
-                                    modifier =
-                                        Modifier.height(10.dp)
-                                )
+                                    Spacer(
+                                        modifier =
+                                            Modifier.height(6.dp)
+                                    )
 
-                                OutlinedButton(
+                                    Text(
 
-                                    onClick = {
+                                        text =
+                                            currentOrder.riderPhone
+                                                .ifEmpty {
+                                                    "Phone unavailable"
+                                                }
+                                    )
 
-                                        navController.navigate(
-                                            "tracking/$orderId"
+                                    Spacer(
+                                        modifier =
+                                            Modifier.height(14.dp)
+                                    )
+
+                                    Button(
+
+                                        onClick = {
+
+                                            if (
+                                                currentOrder
+                                                    .riderPhone
+                                                    .isNotEmpty()
+                                            ) {
+
+                                                val intent =
+                                                    Intent(
+                                                        Intent.ACTION_DIAL
+                                                    )
+
+                                                intent.data =
+                                                    Uri.parse(
+                                                        "tel:${currentOrder.riderPhone}"
+                                                    )
+
+                                                context.startActivity(
+                                                    intent
+                                                )
+                                            }
+                                        },
+
+                                        modifier =
+                                            Modifier.fillMaxWidth(),
+
+                                        colors =
+                                            ButtonDefaults.buttonColors(
+                                                containerColor =
+                                                    Color(0xFF2E7D32)
+                                            ),
+
+                                        shape =
+                                            RoundedCornerShape(14.dp)
+
+                                    ) {
+
+                                        Icon(
+
+                                            imageVector =
+                                                Icons.Default.Call,
+
+                                            contentDescription = ""
                                         )
-                                    },
 
-                                    modifier =
-                                        Modifier.fillMaxWidth(),
+                                        Spacer(
+                                            modifier =
+                                                Modifier.width(8.dp)
+                                        )
 
-                                    shape =
-                                        RoundedCornerShape(14.dp)
+                                        Text(
+                                            text = "Call Rider"
+                                        )
 
-                                ) {
-
-                                    Text(
-                                        text = "🚚 Track Rider"
+                                    }
+                                    Spacer(
+                                        modifier =
+                                            Modifier.height(10.dp)
                                     )
+
+                                    OutlinedButton(
+
+                                        onClick = {
+
+                                            navController.navigate(
+                                                "tracking/$orderId"
+                                            )
+                                        },
+
+                                        modifier =
+                                            Modifier.fillMaxWidth(),
+
+                                        shape =
+                                            RoundedCornerShape(14.dp)
+
+                                    ) {
+
+                                        Text(
+                                            text = "🚚 Track Rider"
+                                        )
+                                    }
                                 }
                             }
                         }

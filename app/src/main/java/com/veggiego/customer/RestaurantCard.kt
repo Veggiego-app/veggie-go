@@ -29,8 +29,8 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CoroutineScope
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 
 @Composable
 fun RestaurantCard(
@@ -41,6 +41,34 @@ fun RestaurantCard(
 
 
 ) {
+    val coroutineScope =
+        rememberCoroutineScope()
+
+
+    var isFavorite by remember(
+        restaurant.id
+    ) {
+
+        mutableStateOf(false)
+    }
+
+    var favoriteLoading by remember(
+        restaurant.id
+    ) {
+
+        mutableStateOf(false)
+    }
+    LaunchedEffect(
+        restaurant.id
+    ) {
+
+        isFavorite =
+
+            FavoriteManager
+                .isRestaurantFavorite(
+                    restaurant.id
+                )
+    }
 
     Card(
 
@@ -195,35 +223,41 @@ fun RestaurantCard(
 
                     // ❤️ FAVORITE ICON
 
-                    var isFavorite by remember {
-
-                        mutableStateOf(false)
-                    }
-
                     IconButton(
+
+                        enabled =
+                            !favoriteLoading,
 
                         onClick = {
 
-                            isFavorite = !isFavorite
+                            if (restaurant.id.isBlank()) {
 
-                            CoroutineScope(
-                                Dispatchers.IO
-                            ).launch {
+                                return@IconButton
+                            }
 
-                                FavoriteManager
-                                    .toggleRestaurantFavorite(
+                            favoriteLoading = true
 
-                                        FavoriteRestaurant(
+                            coroutineScope.launch {
 
-                                            id = restaurant.id,
+                                isFavorite =
 
-                                            restaurantName =
-                                                restaurant.name,
+                                    FavoriteManager
+                                        .toggleRestaurantFavorite(
 
-                                            imageUrl =
-                                                restaurant.imageUrl
+                                            FavoriteRestaurant(
+
+                                                id =
+                                                    restaurant.id,
+
+                                                restaurantName =
+                                                    restaurant.name,
+
+                                                imageUrl =
+                                                    restaurant.imageUrl
+                                            )
                                         )
-                                    )
+
+                                favoriteLoading = false
                             }
                         }
                     ) {
@@ -239,7 +273,15 @@ fun RestaurantCard(
 
                                     Icons.Outlined.FavoriteBorder,
 
-                            contentDescription = null,
+                            contentDescription =
+
+                                if (isFavorite)
+
+                                    "Remove from favorites"
+
+                                else
+
+                                    "Add to favorites",
 
                             tint =
 

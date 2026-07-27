@@ -64,7 +64,9 @@ import com.google.android.gms.location.LocationSettingsRequest
 @Composable
 fun MapPickerScreen(
 
-    navController: NavController
+    navController: NavController,
+
+    openForm: Boolean = false
 
 ) {
 
@@ -906,31 +908,28 @@ fun MapPickerScreen(
                         }
                         AddressData.mapSelected = true
 
-                        navController.previousBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("map_area", AddressData.selectedArea)
+                        AddressData.mapResultReady = true
 
-                        navController.previousBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("map_city", AddressData.selectedCity)
+                        if (openForm) {
 
-                        navController.previousBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("map_pincode", AddressData.selectedPincode)
+                            navController.navigate(
+                                "add_address?addressId="
+                            ) {
 
-                        navController.previousBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("map_latitude", AddressData.selectedLatitude)
+                                popUpTo(
+                                    "map_picker?openForm=true"
+                                ) {
 
-                        navController.previousBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("map_longitude", AddressData.selectedLongitude)
+                                    inclusive = true
+                                }
 
-                        navController.previousBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("map_picked", true)
+                                launchSingleTop = true
+                            }
 
-                        navController.popBackStack()
+                        } else {
+
+                            navController.popBackStack()
+                        }
                     },
 
                     modifier =

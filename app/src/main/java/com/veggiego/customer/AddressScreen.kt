@@ -7,7 +7,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,7 +25,9 @@ import android.location.Location
 @Composable
 fun AddressScreen(
 
-    navController: NavController
+    navController: NavController,
+
+    from: String = "home"
 
 ) {
 
@@ -117,32 +118,51 @@ fun AddressScreen(
             )
         },
 
-        floatingActionButton = {
+        bottomBar = {
 
-            FloatingActionButton(
-
-                onClick = {
-
-                    navController.navigate(
-                        "add_address"
-                    )
-                },
-
-                containerColor =
-                    Color(0xFF2E7D32),
-
-                contentColor =
-                    Color.White
-
+            Surface(
+                color = Color.White,
+                shadowElevation = 8.dp
             ) {
 
-                Icon(
+                Button(
 
-                    Icons.Default.Add,
+                    onClick = {
 
-                    contentDescription =
-                        "Add Address"
-                )
+                        AddressData.mapSelected = false
+
+                        AddressData.selectedArea = ""
+                        AddressData.selectedCity = ""
+                        AddressData.selectedPincode = ""
+                        AddressData.selectedLatitude = 0.0
+                        AddressData.selectedLongitude = 0.0
+
+                        navController.navigate(
+                            "map_picker?openForm=true"
+                        )
+
+                    },
+
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(16.dp),
+
+                    shape = RoundedCornerShape(16.dp),
+
+                    colors =
+                        ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF2E7D32)
+                        )
+
+                ) {
+
+                    Text(
+                        text = "➕ Add New Address",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 
@@ -224,6 +244,9 @@ fun AddressScreen(
 
                             address = address,
 
+                            isSelected =
+                                AddressData.selectedAddress.value?.id == address.id,
+
                             onClick = {
 
                                 AddressData.selectedAddress.value = address
@@ -236,11 +259,20 @@ fun AddressScreen(
 
                                     CartData.selectedDistanceKm = 0.0
 
-                                    navController.navigate("home") {
-                                        popUpTo("home") {
-                                            inclusive = false
+                                    if (from == "cart") {
+
+                                        navController.popBackStack()
+
+                                    } else {
+
+                                        navController.navigate("home") {
+
+                                            popUpTo("home") {
+                                                inclusive = false
+                                            }
+
+                                            launchSingleTop = true
                                         }
-                                        launchSingleTop = true
                                     }
 
                                     return@AddressItem
@@ -275,11 +307,20 @@ fun AddressScreen(
                                         CartData.selectedDistanceKm =
                                             result[0] / 1000.0
 
-                                        navController.navigate("home") {
-                                            popUpTo("home") {
-                                                inclusive = false
+                                        if (from == "cart") {
+
+                                            navController.popBackStack()
+
+                                        } else {
+
+                                            navController.navigate("home") {
+
+                                                popUpTo("home") {
+                                                    inclusive = false
+                                                }
+
+                                                launchSingleTop = true
                                             }
-                                            launchSingleTop = true
                                         }
 
                                     }
@@ -288,13 +329,21 @@ fun AddressScreen(
 
                                         CartData.selectedDistanceKm = 0.0
 
-                                        navController.navigate("home") {
-                                            popUpTo("home") {
-                                                inclusive = false
-                                            }
-                                            launchSingleTop = true
-                                        }
+                                        if (from == "cart") {
 
+                                            navController.popBackStack()
+
+                                        } else {
+
+                                            navController.navigate("home") {
+
+                                                popUpTo("home") {
+                                                    inclusive = false
+                                                }
+
+                                                launchSingleTop = true
+                                            }
+                                        }
                                     }
 
                             },
@@ -362,6 +411,8 @@ fun AddressItem(
 
     address: Address,
 
+    isSelected: Boolean,
+
     onClick: () -> Unit,
 
     onEdit: () -> Unit,
@@ -389,7 +440,15 @@ fun AddressItem(
             CardDefaults.cardColors(
 
                 containerColor =
-                    Color.White
+
+                    if (isSelected) {
+
+                        Color(0xFFF1F8F2)
+
+                    } else {
+
+                        Color.White
+                    }
             ),
 
         elevation =
@@ -411,6 +470,49 @@ fun AddressItem(
                 .padding(16.dp)
 
         ) {
+
+            if (isSelected) {
+
+                Surface(
+
+                    color =
+                        Color(0xFFE0F2E2),
+
+                    shape =
+                        RoundedCornerShape(50.dp)
+
+                ) {
+
+                    Text(
+
+                        text =
+                            "🟢 CURRENT DELIVERY ADDRESS",
+
+                        color =
+                            Color(0xFF1B5E20),
+
+                        fontSize =
+                            12.sp,
+
+                        fontWeight =
+                            FontWeight.Bold,
+
+                        modifier =
+                            Modifier.padding(
+
+                                horizontal = 12.dp,
+
+                                vertical = 7.dp
+                            )
+                    )
+                }
+
+                Spacer(
+
+                    modifier =
+                        Modifier.height(14.dp)
+                )
+            }
 
             Row(
 
@@ -489,6 +591,47 @@ fun AddressItem(
                 modifier =
                     Modifier.height(12.dp)
             )
+
+            if (!isSelected) {
+
+                OutlinedButton(
+
+                    onClick = {
+
+                        onClick()
+                    },
+
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    shape =
+                        RoundedCornerShape(12.dp),
+
+                    colors =
+                        ButtonDefaults.outlinedButtonColors(
+
+                            contentColor =
+                                Color(0xFF2E7D32)
+                        )
+
+                ) {
+
+                    Text(
+
+                        text =
+                            "Use This Address",
+
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                }
+
+                Spacer(
+
+                    modifier =
+                        Modifier.height(6.dp)
+                )
+            }
 
             Row(
 

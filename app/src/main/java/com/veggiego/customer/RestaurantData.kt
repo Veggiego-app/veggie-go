@@ -36,5 +36,7 @@ data class RestaurantData(
 
     val distanceKm: Double = 0.0,
 
-    val distanceText: String = ""
+    val distanceText: String = "",
+
+    val displayOrder: Int = 999999
 )

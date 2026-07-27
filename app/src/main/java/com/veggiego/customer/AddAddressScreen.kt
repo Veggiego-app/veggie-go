@@ -24,11 +24,8 @@ import com.google.firebase.firestore.FieldValue
 
 @Composable
 fun AddAddressScreen(
-
     navController: NavController,
-
     addressId: String = ""
-
 ) {
 
     val db =
@@ -67,11 +64,23 @@ fun AddAddressScreen(
         currentUser.uid
 
     var latitude by remember {
-        mutableStateOf(0.0)
+        mutableStateOf(
+            if (AddressData.mapSelected) {
+                AddressData.selectedLatitude
+            } else {
+                0.0
+            }
+        )
     }
 
     var longitude by remember {
-        mutableStateOf(0.0)
+        mutableStateOf(
+            if (AddressData.mapSelected) {
+                AddressData.selectedLongitude
+            } else {
+                0.0
+            }
+        )
     }
 
     var fullName by remember {
@@ -97,15 +106,33 @@ fun AddAddressScreen(
     }
 
     var area by remember {
-        mutableStateOf("")
+        mutableStateOf(
+            if (AddressData.mapSelected) {
+                AddressData.selectedArea
+            } else {
+                ""
+            }
+        )
     }
 
     var city by remember {
-        mutableStateOf("")
+        mutableStateOf(
+            if (AddressData.mapSelected) {
+                AddressData.selectedCity
+            } else {
+                ""
+            }
+        )
     }
 
     var pincode by remember {
-        mutableStateOf("")
+        mutableStateOf(
+            if (AddressData.mapSelected) {
+                AddressData.selectedPincode
+            } else {
+                ""
+            }
+        )
     }
 
     var originalArea by remember { mutableStateOf("") }
@@ -145,6 +172,7 @@ fun AddAddressScreen(
             AddressData.selectedLongitude = 0.0
         }
 
+        AddressData.mapResultReady = false
         val wentBack =
             navController.popBackStack(
                 route = "select_address",
@@ -159,43 +187,43 @@ fun AddAddressScreen(
     }
 
     var mapSelected by remember {
-        mutableStateOf(isEditMode)
+        mutableStateOf(
+            isEditMode || AddressData.mapSelected
+        )
     }
 
-    // ✅ MAP AUTO FILL
+    // ✅ MAP DATA LIVE OBSERVER
 
-    LaunchedEffect(Unit) {
-        snapshotFlow {
-            listOf(
-                AddressData.selectedArea,
-                AddressData.selectedCity,
-                AddressData.selectedPincode,
-                AddressData.selectedLatitude.toString(),
-                AddressData.selectedLongitude.toString()
-            )
-        }.collect {
+    LaunchedEffect(
+        AddressData.mapSelected,
+        AddressData.selectedLatitude,
+        AddressData.selectedLongitude,
+        AddressData.selectedArea,
+        AddressData.selectedCity,
+        AddressData.selectedPincode
+    ) {
 
-            if (AddressData.selectedArea.isNotBlank()) {
-                area = AddressData.selectedArea
-            }
-
-            if (AddressData.selectedCity.isNotBlank()) {
-                city = AddressData.selectedCity
-            }
-
-            if (AddressData.selectedPincode.isNotBlank()) {
-                pincode = AddressData.selectedPincode
-            }
-
-            if (
-                AddressData.selectedLatitude != 0.0 &&
-                AddressData.selectedLongitude != 0.0
-            ) {
-                latitude = AddressData.selectedLatitude
-                longitude = AddressData.selectedLongitude
-                mapSelected = true
-            }
+        if (!AddressData.mapSelected) {
+            return@LaunchedEffect
         }
+
+        latitude =
+            AddressData.selectedLatitude
+
+        longitude =
+            AddressData.selectedLongitude
+
+        area =
+            AddressData.selectedArea
+
+        city =
+            AddressData.selectedCity
+
+        pincode =
+            AddressData.selectedPincode
+
+        mapSelected =
+            true
     }
 
     // ✅ EDIT ADDRESS
@@ -228,44 +256,61 @@ fun AddAddressScreen(
                         house =
                             address.house
 
-                        area =
+                        // Original saved location back button ke liye
+                        originalArea =
                             address.area
 
-                        city =
+                        originalCity =
                             address.city
 
-                        pincode =
+                        originalPincode =
                             address.pincode
-                        originalArea = address.area
-                        originalCity = address.city
-                        originalPincode = address.pincode
-                        originalLatitude = address.latitude
-                        originalLongitude = address.longitude
 
-                        AddressData.selectedArea =
-                            address.area
+                        originalLatitude =
+                            address.latitude
 
-                        AddressData.selectedCity =
-                            address.city
-
-                        AddressData.selectedPincode =
-                            address.pincode
+                        originalLongitude =
+                            address.longitude
 
                         landmark =
                             address.landmark
 
-                        latitude =
-                            address.latitude
+                        /*
+                         Map se fresh result aaya hai to Firestore ki
+                         purani location se overwrite nahi karna.
+                        */
+                        if (AddressData.mapResultReady) {
 
-                        longitude =
-                            address.longitude
+                            area =
+                                AddressData.selectedArea
 
-                        if (!AddressData.mapSelected) {
+                            city =
+                                AddressData.selectedCity
 
-                            AddressData.selectedLatitude =
+                            pincode =
+                                AddressData.selectedPincode
+
+                            latitude =
+                                AddressData.selectedLatitude
+
+                            longitude =
+                                AddressData.selectedLongitude
+
+                        } else {
+
+                            area =
+                                address.area
+
+                            city =
+                                address.city
+
+                            pincode =
+                                address.pincode
+
+                            latitude =
                                 address.latitude
 
-                            AddressData.selectedLongitude =
+                            longitude =
                                 address.longitude
 
                             AddressData.selectedArea =
@@ -276,9 +321,19 @@ fun AddAddressScreen(
 
                             AddressData.selectedPincode =
                                 address.pincode
+
+                            AddressData.selectedLatitude =
+                                address.latitude
+
+                            AddressData.selectedLongitude =
+                                address.longitude
                         }
 
-                        mapSelected = true
+                        AddressData.mapSelected =
+                            true
+
+                        mapSelected =
+                            true
                     }
                 }
         }
@@ -300,11 +355,33 @@ fun AddAddressScreen(
         // ✅ MAP BUTTON
 
         OutlinedButton(
-
             onClick = {
 
+                // Current form ki location map ko do
+
+                AddressData.selectedLatitude =
+                    latitude
+
+                AddressData.selectedLongitude =
+                    longitude
+
+                AddressData.selectedArea =
+                    area
+
+                AddressData.selectedCity =
+                    city
+
+                AddressData.selectedPincode =
+                    pincode
+
+                AddressData.mapSelected =
+                    latitude != 0.0 &&
+                            longitude != 0.0
+
+                AddressData.mapResultReady = false
+
                 navController.navigate(
-                    "map_picker"
+                    "map_picker?openForm=false"
                 )
             },
 
@@ -320,12 +397,11 @@ fun AddAddressScreen(
 
                 when {
 
-                    !mapSelected -> "🗺 Select Delivery Location"
+                    !mapSelected ->
+                        "🗺 Select Delivery Location"
 
-                    isEditMode -> "📍 Change Delivery Location"
-
-                    else -> "✅ Delivery Location Selected"
-
+                    else ->
+                        "✅ Delivery Location Selected — Change"
                 }
 
             )
@@ -445,17 +521,25 @@ fun AddAddressScreen(
 
         // ✅ AREA
 
+        // ✅ AREA - MAP SE AUTO
+
         OutlinedTextField(
             value = area,
-            onValueChange = {
-                area = it
-            },
+
+            onValueChange = {},
+
+            readOnly = true,
+
             label = {
                 Text("Area / Road")
             },
+
             supportingText = {
-                Text("Auto detected from map, you can edit")
+                Text(
+                    "Selected map location se automatically detected"
+                )
             },
+
             modifier =
                 Modifier.fillMaxWidth()
         )
@@ -492,17 +576,25 @@ fun AddAddressScreen(
 
         // ✅ CITY
 
+        // ✅ CITY - MAP SE AUTO
+
         OutlinedTextField(
             value = city,
-            onValueChange = {
-                city = it
-            },
+
+            onValueChange = {},
+
+            readOnly = true,
+
             label = {
                 Text("City")
             },
+
             supportingText = {
-                Text("Auto detected from map, you can edit")
+                Text(
+                    "Selected map location se automatically detected"
+                )
             },
+
             modifier =
                 Modifier.fillMaxWidth()
         )
@@ -514,22 +606,25 @@ fun AddAddressScreen(
 
         // ✅ PINCODE
 
+        // ✅ PINCODE - MAP SE AUTO
+
         OutlinedTextField(
             value = pincode,
-            onValueChange = {
-                pincode = it.filter { ch ->
-                    ch.isDigit()
-                }.take(6)
-            },
+
+            onValueChange = {},
+
+            readOnly = true,
+
             label = {
                 Text("Pincode")
             },
+
             supportingText = {
-                Text("Auto detected from map, you can edit")
+                Text(
+                    "Selected map location se automatically detected"
+                )
             },
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Number
-            ),
+
             modifier =
                 Modifier.fillMaxWidth()
         )
@@ -741,6 +836,8 @@ fun AddAddressScreen(
                                         .addOnSuccessListener {
 
                                             AddressData.mapSelected = false
+                                            AddressData.mapResultReady = false
+
                                             AddressData.selectedArea = ""
                                             AddressData.selectedCity = ""
                                             AddressData.selectedPincode = ""
@@ -805,6 +902,8 @@ fun AddAddressScreen(
                                         .addOnSuccessListener {
 
                                             AddressData.mapSelected = false
+                                            AddressData.mapResultReady = false
+
                                             AddressData.selectedArea = ""
                                             AddressData.selectedCity = ""
                                             AddressData.selectedPincode = ""

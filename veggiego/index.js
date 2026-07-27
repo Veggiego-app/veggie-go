@@ -1,32 +1,221 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
+const {
+    setGlobalOptions
+} = require("firebase-functions/v2");
 
-const {setGlobalOptions} = require("firebase-functions");
-const {onRequest} = require("firebase-functions/https");
-const logger = require("firebase-functions/logger");
+const {
+    onDocumentWritten
+} = require("firebase-functions/v2/firestore");
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
-setGlobalOptions({ maxInstances: 10 });
+const {
+    initializeApp
+} = require("firebase-admin/app");
 
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
+const {
+    getFirestore
+} = require("firebase-admin/firestore");
 
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+const {
+    getMessaging
+} = require("firebase-admin/messaging");
+
+const logger =
+    require("firebase-functions/logger");
+
+initializeApp();
+
+setGlobalOptions({
+
+    region:
+        "asia-south1",
+
+    maxInstances:
+        10
+});
+
+
+exports.restaurantNewOrderNotification =
+    onDocumentWritten(
+        "orders/{orderId}",
+        async (event) => {
+
+            const afterSnapshot =
+                event.data?.after;
+
+            if (
+                !afterSnapshot ||
+                !afterSnapshot.exists
+            ) {
+                return null;
+            }
+
+            const beforeSnapshot =
+                event.data?.before;
+
+            const after =
+                afterSnapshot.data();
+
+            const before =
+                beforeSnapshot &&
+                beforeSnapshot.exists
+
+                    ? beforeSnapshot.data()
+
+                    : null;
+
+            const currentStatus =
+                String(
+                    after.status || ""
+                ).toUpperCase();
+
+            const previousStatus =
+                String(
+                    before?.status || ""
+                ).toUpperCase();
+
+            const allowedStatuses = [
+
+                "APPROVED",
+
+                "RESTAURANT_PENDING"
+            ];
+
+            if (
+                !allowedStatuses.includes(
+                    currentStatus
+                )
+            ) {
+
+                return null;
+            }
+
+            if (
+                currentStatus ===
+                previousStatus
+            ) {
+
+                return null;
+            }
+
+            const restaurantId =
+                String(
+                    after.restaurantId || ""
+                );
+
+            const orderId =
+                String(
+                    event.params.orderId
+                );
+
+            if (!restaurantId) {
+
+                logger.error(
+                    "Restaurant ID missing",
+                    {
+                        orderId:
+                            orderId
+                    }
+                );
+
+                return null;
+            }
+
+            const restaurantDocument =
+                await getFirestore()
+                    .collection(
+                        "restaurants"
+                    )
+                    .doc(
+                        restaurantId
+                    )
+                    .get();
+
+            if (
+                !restaurantDocument.exists
+            ) {
+
+                logger.error(
+                    "Restaurant not found",
+                    {
+                        restaurantId:
+                            restaurantId,
+
+                        orderId:
+                            orderId
+                    }
+                );
+
+                return null;
+            }
+
+            const restaurantToken =
+                restaurantDocument
+                    .data()
+                    ?.fcmToken;
+
+            if (!restaurantToken) {
+
+                logger.error(
+                    "Restaurant FCM token missing",
+                    {
+                        restaurantId:
+                            restaurantId,
+
+                        orderId:
+                            orderId
+                    }
+                );
+
+                return null;
+            }
+
+            const customerName =
+                String(
+                    after.customerName ||
+                    "Customer"
+                );
+
+            await getMessaging()
+                .send({
+
+                    token:
+                        restaurantToken,
+
+                    data: {
+
+                        title:
+                            "🍔 New Order Received",
+
+                        body:
+                            `${customerName} placed a new order`,
+
+                        orderId:
+                            orderId,
+
+                        type:
+                            "NEW_ORDER"
+                    },
+
+                    android: {
+
+                        priority:
+                            "high",
+
+                        ttl:
+                            3600000
+                    }
+                });
+
+            logger.info(
+                "Restaurant notification sent",
+                {
+                    restaurantId:
+                        restaurantId,
+
+                    orderId:
+                        orderId
+                }
+            );
+
+            return null;
+        }
+    );

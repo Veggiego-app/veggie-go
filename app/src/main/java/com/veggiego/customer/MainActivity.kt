@@ -494,7 +494,6 @@ class MainActivity : ComponentActivity() {
                             ) ?: ""
 
                         AddAddressScreen(
-
                             navController =
                                 navController,
 
@@ -504,19 +503,67 @@ class MainActivity : ComponentActivity() {
                     }
 
                     composable(
-                        "select_address"
-                    ) {
+
+                        route =
+                            "select_address?from={from}",
+
+                        arguments = listOf(
+
+                            navArgument(
+                                "from"
+                            ) {
+
+                                defaultValue = "home"
+                            }
+                        )
+
+                    ) { backStackEntry ->
+
+                        val from =
+
+                            backStackEntry
+                                .arguments
+                                ?.getString("from")
+                                ?: "home"
 
                         AddressScreen(
-                            navController
+
+                            navController =
+                                navController,
+
+                            from =
+                                from
                         )
                     }
                     composable(
-                        "map_picker"
-                    ) {
+
+                        route =
+                            "map_picker?openForm={openForm}",
+
+                        arguments = listOf(
+
+                            navArgument(
+                                "openForm"
+                            ) {
+
+                                defaultValue = false
+                            }
+                        )
+
+                    ) { backStackEntry ->
+
+                        val openForm =
+
+                            backStackEntry
+                                .arguments
+                                ?.getBoolean("openForm")
+                                ?: false
 
                         MapPickerScreen(
-                            navController
+
+                            navController = navController,
+
+                            openForm = openForm
                         )
                     }
                 }

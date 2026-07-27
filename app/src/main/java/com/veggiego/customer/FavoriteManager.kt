@@ -16,33 +16,56 @@ object FavoriteManager {
 
         restaurant: FavoriteRestaurant
 
-    ) {
+    ): Boolean {
 
         val uid =
-            auth.currentUser?.uid ?: return
+            auth.currentUser?.uid
+                ?: return false
 
-        val docRef =
+        if (restaurant.id.isBlank()) {
 
-            db.collection("favorites")
-                .document(uid)
-                .collection("restaurants")
-                .document(restaurant.id)
-
-        val snapshot =
-            docRef.get().await()
-
-        if (snapshot.exists()) {
-
-            docRef.delete()
-
-        } else {
-
-            docRef.set(restaurant).await()
-
-            android.util.Log.d(
-                "FIRESTORE",
-                "Restaurant Saved"
+            android.util.Log.e(
+                "FAVORITE_ERROR",
+                "Restaurant ID is empty"
             )
+
+            return false
+        }
+
+        return try {
+
+            val docRef =
+
+                db.collection("favorites")
+                    .document(uid)
+                    .collection("restaurants")
+                    .document(restaurant.id)
+
+            val snapshot =
+                docRef.get().await()
+
+            if (snapshot.exists()) {
+
+                docRef.delete().await()
+
+                false
+
+            } else {
+
+                docRef.set(restaurant).await()
+
+                true
+            }
+
+        } catch (e: Exception) {
+
+            android.util.Log.e(
+                "FAVORITE_ERROR",
+                "Favorite update failed",
+                e
+            )
+
+            false
         }
     }
 
@@ -82,19 +105,36 @@ object FavoriteManager {
     ): Boolean {
 
         val uid =
-
             auth.currentUser?.uid
                 ?: return false
 
-        val snapshot =
+        if (restaurantId.isBlank()) {
 
-            db.collection("favorites")
-                .document(uid)
-                .collection("restaurants")
-                .document(restaurantId)
-                .get()
-                .await()
+            return false
+        }
 
-        return snapshot.exists()
+        return try {
+
+            val snapshot =
+
+                db.collection("favorites")
+                    .document(uid)
+                    .collection("restaurants")
+                    .document(restaurantId)
+                    .get()
+                    .await()
+
+            snapshot.exists()
+
+        } catch (e: Exception) {
+
+            android.util.Log.e(
+                "FAVORITE_ERROR",
+                "Unable to check favorite",
+                e
+            )
+
+            false
+        }
     }
 }

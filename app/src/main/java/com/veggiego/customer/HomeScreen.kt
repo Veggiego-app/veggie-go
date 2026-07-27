@@ -356,7 +356,12 @@ fun HomeScreen(
 
                                 lng =
                                     doc.getDouble("lng")
-                                        ?: 0.0
+                                        ?: 0.0,
+
+                                displayOrder =
+                                    doc.getLong("displayOrder")
+                                        ?.toInt()
+                                        ?: 999999
                             )
 
                         } catch (e: Exception) {
@@ -364,7 +369,13 @@ fun HomeScreen(
                             null
                         }
 
-                    } ?: emptyList()
+                    }
+                        ?.sortedBy { restaurant ->
+
+                            restaurant.displayOrder
+
+                        }
+                        ?: emptyList()
 
                 isLoading = false
             }

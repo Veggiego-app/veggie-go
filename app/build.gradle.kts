@@ -11,7 +11,7 @@ android {
 
     namespace = "com.veggiego.customer"
 
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
 
@@ -20,11 +20,11 @@ android {
 
         minSdk = 24
 
-        targetSdk = 35
+        targetSdk = 36
 
-        versionCode = 12
+        versionCode = 14
 
-        versionName = "2.1"
+        versionName = "2.3"
 
         buildConfigField(
             "String",

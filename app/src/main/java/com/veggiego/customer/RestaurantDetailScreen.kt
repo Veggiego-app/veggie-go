@@ -45,9 +45,17 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import kotlinx.coroutines.CoroutineScope
 import com.google.firebase.firestore.Query
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import kotlin.math.max
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalFoundationApi::class
+)
 @Composable
 fun RestaurantDetailScreen(
     navController: NavController,
@@ -758,15 +766,14 @@ fun RestaurantDetailScreen(
 
             val searchMatch =
 
-                item.name.contains(
-                    searchQuery.text,
-                    ignoreCase = true
-                ) ||
+                fuzzySearchMatch(
 
-                        item.description.contains(
-                            searchQuery.text,
-                            ignoreCase = true
-                        )
+                    text =
+                        item.name,
+
+                    query =
+                        searchQuery.text
+                )
 
             categoryMatch &&
                     searchMatch &&
@@ -864,6 +871,14 @@ fun RestaurantDetailScreen(
     val listState =
         rememberLazyListState()
 
+    val itemScrollOffsetPx =
+
+        with(LocalDensity.current) {
+
+            105.dp.roundToPx()
+
+        }
+
     var collapsedSubCategories by remember {
         mutableStateOf(setOf<String>())
     }
@@ -900,7 +915,10 @@ fun RestaurantDetailScreen(
                 index++ // Category Header
 
                 if (category.equals(target, ignoreCase = true)) {
-                    listState.scrollToItem(categoryIndex)
+                    listState.scrollToItem(
+                        index = categoryIndex,
+                        scrollOffset = -itemScrollOffsetPx
+                    )
                     return@launch
                 }
 
@@ -933,7 +951,10 @@ fun RestaurantDetailScreen(
                     index++ // SubCategory Header
 
                     if (subCategory.equals(target, ignoreCase = true)) {
-                        listState.scrollToItem(subCategoryIndex)
+                        listState.scrollToItem(
+                            index = subCategoryIndex,
+                            scrollOffset = -itemScrollOffsetPx
+                        )
                         return@launch
                     }
 
@@ -947,7 +968,16 @@ fun RestaurantDetailScreen(
                                     ignoreCase = true
                                 )
                             ) {
-                                listState.scrollToItem(index)
+
+                                listState.scrollToItem(
+
+                                    index = index,
+
+                                    scrollOffset =
+                                        -itemScrollOffsetPx
+
+                                )
+
                                 return@launch
                             }
 
@@ -1096,17 +1126,31 @@ fun RestaurantDetailScreen(
                     )
                 }
             }
-            item {
+            stickyHeader {
 
-                PremiumMenuSearchBar(
+                Surface(
+                    color = Color.White
+                ) {
 
-                    value = searchQuery,
+                    PremiumMenuSearchBar(
 
-                    onValueChange = {
+                        value = searchQuery,
 
-                        searchQuery = it
-                    }
-                )
+                        onValueChange = {
+
+                            searchQuery = it
+                        },
+
+                        onSearchClick = {
+
+                            coroutineScope.launch {
+
+                                listState.animateScrollToItem(2)
+
+                            }
+                        }
+                    )
+                }
             }
             if (
 
@@ -1122,54 +1166,199 @@ fun RestaurantDetailScreen(
 
                     Column {
 
-                        Text(
-                            text = "Recommended",
+                        // ============================
+                        // Recommended Category Header
+                        // ============================
 
-                            fontSize = 24.sp,
-
-                            fontWeight =
-                                FontWeight.Bold,
-
-                            color = Color.Black,
+                        Surface(
 
                             modifier = Modifier
+                                .fillMaxWidth()
                                 .padding(
-                                    horizontal = 16.dp,
-                                    vertical = 14.dp
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    top = 22.dp,
+                                    bottom = 8.dp
+                                ),
+
+                            shape =
+                                RoundedCornerShape(14.dp),
+
+                            color =
+                                Color(0xFF166534),
+
+                            shadowElevation = 2.dp
+
+                        ) {
+
+                            Text(
+
+                                text = "Recommended",
+
+                                fontSize = 21.sp,
+
+                                fontWeight =
+                                    FontWeight.Bold,
+
+                                color = Color.White,
+
+                                modifier = Modifier.padding(
+                                    horizontal = 18.dp,
+                                    vertical = 13.dp
                                 )
-                        )
+                            )
+                        }
 
-                        Column {
 
-                            recommendedItems.forEach { item ->
+                        // ============================
+                        // Recommended SubCategory Header
+                        // ============================
 
-                                RecommendedItemCard(
+                        Row(
 
-                                    item = item,
-
-                                    restaurantId = restaurantId,
-
-                                    restaurantName = restaurant.name,
-
-                                    restaurantOpen =
-
-                                        restaurant.autoOpen &&
-                                                restaurant.online &&
-                                                !restaurant.temporaryClosed &&
-                                                !restaurant.isHoliday,
-
-                                    categoryAvailable =
-
-                                        categoryTimeMap[item.category] != false &&
-
-                                                categoryStockMap[item.category] != false
-
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    horizontal = 20.dp,
+                                    vertical = 5.dp
                                 )
-
-                                Spacer(
-                                    modifier = Modifier.height(12.dp)
+                                .clip(
+                                    RoundedCornerShape(12.dp)
                                 )
-                            }
+                                .background(
+                                    Color(0xFFE8F5E9)
+                                )
+                                .padding(
+                                    start = 16.dp,
+                                    end = 12.dp,
+                                    top = 11.dp,
+                                    bottom = 11.dp
+                                ),
+
+                            verticalAlignment =
+                                Alignment.CenterVertically
+
+                        ) {
+
+                            Text(
+
+                                text = "Recommended Items",
+
+                                modifier =
+                                    Modifier.weight(1f),
+
+                                fontSize = 18.sp,
+
+                                fontWeight =
+                                    FontWeight.Bold,
+
+                                color =
+                                    Color(0xFF166534)
+                            )
+
+                            Text(
+
+                                text =
+                                    recommendedItems.size.toString(),
+
+                                fontSize = 15.sp,
+
+                                fontWeight =
+                                    FontWeight.Bold,
+
+                                color =
+                                    Color(0xFF166534)
+                            )
+                        }
+
+
+                        // ============================
+                        // Recommended Menu Items
+                        // ============================
+
+                        recommendedItems.forEach { item ->
+
+                            val cartItem =
+
+                                CartData.items.find {
+
+                                    it.item.name == item.name
+
+                                }
+
+                            MenuItemRow(
+
+                                item = item,
+
+                                cartItem = cartItem,
+
+                                restaurantId = restaurantId,
+
+                                restaurantName = restaurant.name,
+
+                                restaurantOpen =
+
+                                    restaurant.autoOpen &&
+
+                                            restaurant.online &&
+
+                                            !restaurant.temporaryClosed &&
+
+                                            !restaurant.isHoliday,
+
+                                categoryAvailable =
+
+                                    categoryTimeMap[item.category] != false &&
+
+                                            categoryStockMap[item.category] != false,
+
+                                subCategoryAvailable =
+
+                                    subCategoryTimeMap[item.subCategory] != false &&
+
+                                            subCategoryStockMap[item.subCategory] != false,
+
+                                onAdd = {
+
+                                    if (
+
+                                        CartData.currentRestaurantId.value.isNotEmpty()
+
+                                        &&
+
+                                        CartData.currentRestaurantId.value != restaurantId
+
+                                    ) {
+
+                                        CartData.clearCart()
+
+                                    }
+
+                                    CartData.addToCart(
+
+                                        restaurantId,
+
+                                        restaurant.name,
+
+                                        item
+
+                                    )
+
+                                },
+
+                                onIncrease = {
+
+                                    CartData.increase(it)
+
+                                },
+
+                                onDecrease = {
+
+                                    CartData.decrease(it)
+
+                                }
+
+                            )
 
                         }
 
@@ -1179,6 +1368,87 @@ fun RestaurantDetailScreen(
                         )
                     }
                 }
+            }
+
+            if (
+                searchQuery.text.isNotBlank() &&
+                filteredMenuItems.isEmpty()
+            ) {
+
+                item {
+
+                    Box(
+
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fillParentMaxHeight(0.75f)
+                            .padding(24.dp),
+
+                        contentAlignment = Alignment.Center
+
+                    ) {
+
+                        Column(
+
+                            horizontalAlignment =
+                                Alignment.CenterHorizontally
+
+                        ) {
+
+                            Icon(
+
+                                imageVector =
+                                    Icons.Default.Search,
+
+                                contentDescription = null,
+
+                                tint = Color.Gray,
+
+                                modifier =
+                                    Modifier.size(52.dp)
+
+                            )
+
+                            Spacer(
+                                modifier =
+                                    Modifier.height(16.dp)
+                            )
+
+                            Text(
+
+                                text = "Item not found",
+
+                                fontSize = 20.sp,
+
+                                fontWeight =
+                                    FontWeight.Bold,
+
+                                color = Color.Black
+
+                            )
+
+                            Spacer(
+                                modifier =
+                                    Modifier.height(6.dp)
+                            )
+
+                            Text(
+
+                                text =
+                                    "No item found for \"${searchQuery.text}\"",
+
+                                fontSize = 14.sp,
+
+                                color = Color.Gray
+
+                            )
+
+                        }
+
+                    }
+
+                }
+
             }
 
             visibleCategories.forEach { category ->
@@ -1191,24 +1461,44 @@ fun RestaurantDetailScreen(
 
                 item {
 
-                    Text(
-
-                        text = category,
-
-                        fontSize = 22.sp,
-
-                        fontWeight = FontWeight.Bold,
-
-                        color = Color.Black,
+                    Surface(
 
                         modifier = Modifier
+                            .fillMaxWidth()
                             .padding(
-                                horizontal = 16.dp,
-                                vertical = 12.dp
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 22.dp,
+                                bottom = 8.dp
+                            ),
+
+                        shape =
+                            RoundedCornerShape(14.dp),
+
+                        color =
+                            Color(0xFF166534),
+
+                        shadowElevation = 2.dp
+
+                    ) {
+
+                        Text(
+
+                            text = category,
+
+                            fontSize = 21.sp,
+
+                            fontWeight =
+                                FontWeight.Bold,
+
+                            color = Color.White,
+
+                            modifier = Modifier.padding(
+                                horizontal = 18.dp,
+                                vertical = 13.dp
                             )
-
-                    )
-
+                        )
+                    }
                 }
 
                 val orderedSubCategories =
@@ -1258,28 +1548,43 @@ fun RestaurantDetailScreen(
 
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .padding(
+                                    horizontal = 20.dp,
+                                    vertical = 5.dp
+                                )
+                                .clip(
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .background(
+                                    Color(0xFFE8F5E9)
+                                )
                                 .clickable {
 
                                     collapsedSubCategories =
 
-                                        if (collapsedSubCategories.contains(subCategory)) {
+                                        if (
+                                            collapsedSubCategories
+                                                .contains(subCategory)
+                                        ) {
 
-                                            collapsedSubCategories - subCategory
+                                            collapsedSubCategories -
+                                                    subCategory
 
                                         } else {
 
-                                            collapsedSubCategories + subCategory
+                                            collapsedSubCategories +
+                                                    subCategory
                                         }
-
                                 }
                                 .padding(
-                                    start = 24.dp,
-                                    end = 16.dp,
-                                    top = 8.dp,
-                                    bottom = 8.dp
+                                    start = 16.dp,
+                                    end = 12.dp,
+                                    top = 11.dp,
+                                    bottom = 11.dp
                                 ),
 
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment =
+                                Alignment.CenterVertically
 
                         ) {
 
@@ -1287,14 +1592,16 @@ fun RestaurantDetailScreen(
 
                                 text = subCategory,
 
-                                modifier = Modifier.weight(1f),
+                                modifier =
+                                    Modifier.weight(1f),
 
                                 fontSize = 18.sp,
 
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight =
+                                    FontWeight.Bold,
 
-                                color = Color.DarkGray
-
+                                color =
+                                    Color(0xFF166534)
                             )
 
                             Icon(
@@ -1311,7 +1618,7 @@ fun RestaurantDetailScreen(
 
                                 contentDescription = null,
 
-                                tint = Color.Gray
+                                tint = Color(0xFF166534)
 
                             )
                         }
@@ -3158,9 +3465,29 @@ fun PremiumMenuSearchBar(
 
     value: TextFieldValue,
 
-    onValueChange: (TextFieldValue) -> Unit
+    onValueChange: (TextFieldValue) -> Unit,
+
+    onSearchClick: () -> Unit
 
 ) {
+
+    val interactionSource = remember {
+
+        MutableInteractionSource()
+
+    }
+
+    val isPressed by
+    interactionSource.collectIsPressedAsState()
+
+    LaunchedEffect(isPressed) {
+
+        if (isPressed) {
+
+            onSearchClick()
+
+        }
+    }
 
     Card(
 
@@ -3194,8 +3521,19 @@ fun PremiumMenuSearchBar(
             onValueChange =
                 onValueChange,
 
+            interactionSource =
+                interactionSource,
+
             modifier = Modifier
                 .fillMaxWidth()
+                .onFocusChanged { focusState ->
+
+                    if (focusState.isFocused) {
+
+                        onSearchClick()
+
+                    }
+                }
                 .padding(
                     horizontal = 18.dp,
                     vertical = 16.dp
@@ -3285,376 +3623,188 @@ fun PremiumMenuSearchBar(
         )
     }
 }
-@Composable
-fun RecommendedItemCard(
+private fun fuzzySearchMatch(
 
-    item: MenuItem,
+    text: String,
 
-    restaurantId: String,
+    query: String
 
-    restaurantName: String,
+): Boolean {
 
-    restaurantOpen: Boolean,
+    val cleanQuery =
 
-    categoryAvailable: Boolean = true
-) {
+        query
+            .trim()
+            .lowercase()
 
-    Card(
+    if (cleanQuery.isBlank()) {
 
-        modifier = Modifier
-            .width(150.dp),
+        return true
 
-        shape =
-            RoundedCornerShape(22.dp),
+    }
 
-        colors =
-            CardDefaults.cardColors(
-                containerColor =
-                    Color.White
-            ),
+    val cleanText =
 
-        elevation =
-            CardDefaults.cardElevation(
-                defaultElevation = 5.dp
+        text.lowercase()
+
+    // Exact word ya partial word mil gaya
+    if (cleanText.contains(cleanQuery)) {
+
+        return true
+
+    }
+
+    val textWords =
+
+        cleanText
+            .split(
+                Regex("[^a-z0-9]+")
             )
-    ) {
+            .filter {
 
-        Column {
-
-            Box {
-
-                AsyncImage(
-
-                    model = item.image,
-
-                    contentDescription = null,
-
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(140.dp),
-
-                    contentScale =
-                        ContentScale.Crop
-                )
+                it.isNotBlank()
             }
 
-            Column(
+    val queryWords =
 
-                modifier = Modifier
-                    .padding(14.dp)
+        cleanQuery
+            .split(
+                Regex("[^a-z0-9]+")
+            )
+            .filter {
 
-            ) {
+                it.isNotBlank()
+            }
 
-                Text(
+    return queryWords.all { queryWord ->
 
-                    text = item.name,
+        textWords.any { textWord ->
 
-                    fontWeight =
-                        FontWeight.Bold,
+            val allowedMistakes =
 
-                    fontSize = 15.sp,
+                when {
 
-                    lineHeight = 20.sp,
+                    queryWord.length <= 4 -> 1
 
-                    maxLines = 2,
+                    queryWord.length <= 8 -> 2
 
-                    overflow =
-                        TextOverflow.Ellipsis,
-
-                    color = Color.Black
-                )
-
-                Spacer(
-                    modifier =
-                        Modifier.height(6.dp)
-                )
-
-                Text(
-
-                    text =
-                        item.description,
-
-                    color = Color.Gray,
-
-                    fontSize = 13.sp,
-
-                    maxLines = 2,
-
-                    overflow =
-                        TextOverflow.Ellipsis
-                )
-
-                Spacer(
-                    modifier =
-                        Modifier.height(10.dp)
-                )
-
-                Row(
-
-                    modifier =
-                        Modifier.fillMaxWidth(),
-
-                    horizontalArrangement =
-                        Arrangement.SpaceBetween,
-
-                    verticalAlignment =
-                        Alignment.CenterVertically
-                ) {
-
-                    Text(
-
-                        text =
-                            if (
-                                item.variants.isNotEmpty()
-                            ) {
-
-                                "Starts ₹${item.variants.first().price}"
-
-                            } else {
-
-                                "₹${item.price}"
-                            },
-
-                        color =
-                            Color(0xFF16A34A),
-
-                        fontWeight =
-                            FontWeight.Bold,
-
-                        fontSize = 17.sp
-                    )
-
-                    val recommendedCartItem =
-
-                        CartData.items.find {
-
-                            it.item.name ==
-                                    item.name
-                        }
-
-                    if (!restaurantOpen) {
-
-                        Button(
-
-                            onClick = {},
-
-                            enabled = false
-
-                        ) {
-
-                            Text(
-
-                                text = "CLOSED",
-
-                                maxLines = 1,
-
-                                fontSize = 9.sp,
-
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    else if (
-
-                        !item.available ||
-
-                        !categoryAvailable
-
-                    ) {
-
-                        Surface(
-
-                            color = Color(0xFFD50000),
-
-                            shape = RoundedCornerShape(50.dp)
-
-                        ) {
-
-                            Text(
-
-                                text = "OUT OF STOCK",
-
-                                color = Color.White,
-
-                                fontWeight = FontWeight.Bold,
-
-                                fontSize = 10.sp,
-
-                                modifier = Modifier.padding(
-
-                                    horizontal = 12.dp,
-
-                                    vertical = 8.dp
-                                )
-                            )
-                        }
-                    }
-                    else if (
-                        recommendedCartItem == null
-                    ) {
-
-                        Card(
-
-                            modifier = Modifier
-                                .clickable {
-                                    if (
-
-                                        CartData.currentRestaurantId.value.isNotEmpty()
-
-                                        &&
-
-                                        CartData.currentRestaurantId.value != restaurantId
-
-                                    ) {
-
-                                        CartData.clearCart()
-                                    }
-
-                                    CartData.addToCart(
-
-                                        restaurantId =
-                                            restaurantId,
-
-                                        restaurantName =
-                                            restaurantName,
-
-                                        item = item
-                                    )
-                                },
-
-                            shape =
-                                RoundedCornerShape(12.dp),
-
-                            border = BorderStroke(
-                                1.dp,
-                                Color(0xFF16A34A)
-                            ),
-
-                            colors =
-                                CardDefaults.cardColors(
-                                    containerColor =
-                                        Color.White
-                                )
-                        ) {
-
-                            Text(
-
-                                text = "ADD",
-
-                                modifier = Modifier
-                                    .padding(
-                                        horizontal = 18.dp,
-                                        vertical = 10.dp
-                                    ),
-
-                                color =
-                                    Color(0xFF16A34A),
-
-                                fontWeight =
-                                    FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    else {
-
-                        Card(
-
-                            shape =
-                                RoundedCornerShape(14.dp),
-
-                            colors =
-                                CardDefaults.cardColors(
-                                    containerColor =
-                                        Color(0xFF16A34A)
-                                )
-
-                        ) {
-
-                            Row(
-
-                                verticalAlignment =
-                                    Alignment.CenterVertically,
-
-                                modifier = Modifier
-                                    .padding(
-                                        horizontal = 6.dp,
-                                        vertical = 2.dp
-                                    )
-
-                            ) {
-
-                                Text(
-
-                                    text = "-",
-
-                                    color = Color.White,
-
-                                    fontWeight =
-                                        FontWeight.Bold,
-
-                                    fontSize = 22.sp,
-
-                                    modifier = Modifier
-                                        .clickable {
-
-                                            CartData.decrease(
-                                                recommendedCartItem
-                                            )
-                                        }
-                                        .padding(
-                                            horizontal = 10.dp,
-                                            vertical = 4.dp
-                                        )
-                                )
-
-                                Text(
-
-                                    text =
-                                        recommendedCartItem.quantity
-                                            .toString(),
-
-                                    color = Color.White,
-
-                                    fontWeight =
-                                        FontWeight.Bold,
-
-                                    fontSize = 16.sp,
-
-                                    modifier =
-                                        Modifier.padding(
-                                            horizontal = 6.dp
-                                        )
-                                )
-
-                                Text(
-
-                                    text = "+",
-
-                                    color = Color.White,
-
-                                    fontWeight =
-                                        FontWeight.Bold,
-
-                                    fontSize = 20.sp,
-
-                                    modifier = Modifier
-                                        .clickable {
-
-                                            CartData.increase(
-                                                recommendedCartItem
-                                            )
-                                        }
-                                        .padding(
-                                            horizontal = 10.dp,
-                                            vertical = 4.dp
-                                        )
-                                )
-                            }
-                        }
-                    }
+                    else -> 3
                 }
-            }
+
+            levenshteinDistance(
+                queryWord,
+                textWord
+            ) <= allowedMistakes
         }
     }
+}
+
+
+private fun levenshteinDistance(
+
+    first: String,
+
+    second: String
+
+): Int {
+
+    if (first == second) {
+
+        return 0
+    }
+
+    if (first.isEmpty()) {
+
+        return second.length
+    }
+
+    if (second.isEmpty()) {
+
+        return first.length
+    }
+
+    val previousRow =
+
+        IntArray(
+            second.length + 1
+        ) {
+
+            it
+        }
+
+    val currentRow =
+
+        IntArray(
+            second.length + 1
+        )
+
+    for (
+    firstIndex in 1..first.length
+    ) {
+
+        currentRow[0] =
+            firstIndex
+
+        for (
+        secondIndex in 1..second.length
+        ) {
+
+            val insertCost =
+
+                currentRow[
+                    secondIndex - 1
+                ] + 1
+
+            val deleteCost =
+
+                previousRow[
+                    secondIndex
+                ] + 1
+
+            val replaceCost =
+
+                previousRow[
+                    secondIndex - 1
+                ] +
+
+                        if (
+                            first[
+                                firstIndex - 1
+                            ] ==
+                            second[
+                                secondIndex - 1
+                            ]
+                        ) {
+
+                            0
+
+                        } else {
+
+                            1
+                        }
+
+            currentRow[secondIndex] =
+
+                minOf(
+
+                    insertCost,
+
+                    deleteCost,
+
+                    replaceCost
+                )
+        }
+
+        for (
+        index in previousRow.indices
+        ) {
+
+            previousRow[index] =
+                currentRow[index]
+        }
+    }
+
+    return previousRow[
+        second.length
+    ]
 }

@@ -615,7 +615,7 @@ fun CartScreen(
                                     ).show()
 
                                     navController.navigate(
-                                        "select_address"
+                                        "select_address?from=cart"
                                     )
 
                                     return@Button
@@ -1225,14 +1225,13 @@ fun CartScreen(
                             )
 
                             Card(
-
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
                                         .clickable {
 
                                             navController.navigate(
-                                                "select_address"
+                                                "select_address?from=cart"
                                             )
                                         },
 

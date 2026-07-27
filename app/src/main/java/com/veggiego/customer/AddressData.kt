@@ -23,4 +23,6 @@ object AddressData {
     var selectedPincode by mutableStateOf("")
 
     var mapSelected by mutableStateOf(false)
+
+    var mapResultReady by mutableStateOf(false)
 }
