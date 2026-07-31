@@ -22,6 +22,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.runtime.getValue
@@ -37,12 +39,19 @@ fun RestaurantCard(
 
     restaurant: RestaurantData,
 
+    timeVersion: Long = 0L,
+
     onRestaurantClick: (String) -> Unit
 
 
 ) {
     val coroutineScope =
         rememberCoroutineScope()
+
+    // Final open/close comes only from weeklySlots plus online/holiday/temporary-close.
+    val restaurantOpen = remember(restaurant, timeVersion) {
+        isRestaurantOpenNow(restaurant)
+    }
 
 
     var isFavorite by remember(
@@ -134,7 +143,11 @@ fun RestaurantCard(
 
                     AsyncImage(
 
-                        model = restaurant.imageUrl,
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(restaurant.imageUrl)
+                            .size(320, 320)
+                            .crossfade(true)
+                            .build(),
 
                         contentDescription = null,
 
@@ -435,12 +448,7 @@ fun RestaurantCard(
                     )
                 }
 
-                else if (
-
-                    restaurant.autoOpen &&
-                    restaurant.online
-
-                ) {
+                else if (restaurantOpen) {
 
                     Text(
 
@@ -459,9 +467,7 @@ fun RestaurantCard(
                     Text(
 
                         text =
-                            formatOpeningText(
-                                restaurant.openingText
-                            ),
+                            "🟠 ${restaurantWeeklyOpeningText(restaurant).uppercase()}",
 
                         color = Color(0xFFFF9800),
 

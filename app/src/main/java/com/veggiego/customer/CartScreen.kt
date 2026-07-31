@@ -28,6 +28,10 @@ import androidx.compose.ui.platform.LocalContext
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.DocumentSnapshot
+import kotlin.math.ceil
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -418,6 +422,10 @@ fun CartScreen(
         mutableStateOf("")
     }
 
+    var isPlacingOrder by remember {
+        mutableStateOf(false)
+    }
+
     if (showUnavailableDialog) {
 
         AlertDialog(
@@ -428,7 +436,7 @@ fun CartScreen(
 
             title = {
                 Text(
-                    text = "Items Unavailable",
+                    text = "Unable to Place Order",
                     fontWeight = FontWeight.Bold
                 )
             },
@@ -561,57 +569,44 @@ fun CartScreen(
 
                         Button(
 
-                            enabled = !calculatingRoute,
+                            enabled = !calculatingRoute && !isPlacingOrder,
 
                             onClick = {
+
+                                if (isPlacingOrder) {
+                                    return@Button
+                                }
+
                                 if (itemTotal < minimumOrder) {
 
                                     Toast.makeText(
-
                                         context,
-
                                         "Minimum order amount is ₹$minimumOrder",
-
                                         Toast.LENGTH_LONG
-
                                     ).show()
 
                                     return@Button
-
                                 }
+
                                 val addressData =
                                     AddressData.selectedAddress.value
 
                                 if (
-
                                     addressData == null ||
-
                                     addressData.fullName.isBlank() ||
-
                                     addressData.phone.isBlank() ||
-
                                     addressData.house.isBlank() ||
-
                                     addressData.area.isBlank() ||
-
                                     addressData.city.isBlank() ||
-
                                     addressData.pincode.isBlank() ||
-
                                     addressData.latitude == 0.0 ||
-
                                     addressData.longitude == 0.0
-
                                 ) {
 
                                     Toast.makeText(
-
                                         context,
-
                                         "❌ Please complete your delivery address",
-
                                         Toast.LENGTH_LONG
-
                                     ).show()
 
                                     navController.navigate(
@@ -624,141 +619,297 @@ fun CartScreen(
                                 val restaurantId =
                                     CartData.currentRestaurantId.value
 
+                                if (restaurantId.isBlank()) {
+
+                                    Toast.makeText(
+                                        context,
+                                        "Restaurant information is missing. Please add the items again.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+
+                                    return@Button
+                                }
+
+                                isPlacingOrder = true
+
                                 db.collection("restaurants")
                                     .document(restaurantId)
                                     .get()
-
                                     .addOnSuccessListener { doc ->
 
-                                        val online =
-                                            doc.getBoolean("online")
-                                                ?: false
+                                        if (!doc.exists()) {
+
+                                            isPlacingOrder = false
+
+                                            unavailableMessage =
+                                                "This restaurant is no longer available."
+
+                                            showUnavailableDialog = true
+                                            return@addOnSuccessListener
+                                        }
+
+                                        val closedReason =
+                                            getRestaurantClosedReason(doc)
+
+                                        if (closedReason != null) {
+
+                                            isPlacingOrder = false
+                                            unavailableMessage = closedReason
+                                            showUnavailableDialog = true
+
+                                            return@addOnSuccessListener
+                                        }
+
+                                        val restaurantLat =
+                                            doc.getDouble("lat") ?: 0.0
+
+                                        val restaurantLng =
+                                            doc.getDouble("lng") ?: 0.0
+
                                         if (
-
-                                            calculatingRoute ||
-
-                                            distanceKm <= 0.0
-
+                                            restaurantLat == 0.0 ||
+                                            restaurantLng == 0.0
                                         ) {
 
-                                            Toast.makeText(
-
-                                                context,
-
-                                                "Please wait, calculating road distance...",
-
-                                                Toast.LENGTH_LONG
-
-                                            ).show()
+                                            isPlacingOrder = false
+                                            unavailableMessage =
+                                                "Restaurant location is unavailable. Please try again later."
+                                            showUnavailableDialog = true
 
                                             return@addOnSuccessListener
-
                                         }
-                                        if (distanceKm > maxDeliveryDistance) {
 
-                                            Toast.makeText(
+                                        val freshMaxDistance =
+                                            doc.getDouble("maxDeliveryDistance")
+                                                ?: maxDeliveryDistance
 
-                                                context,
+                                        kotlinx.coroutines.CoroutineScope(
+                                            kotlinx.coroutines.Dispatchers.Main
+                                        ).launch {
 
-                                                "Restaurant delivers only within ${maxDeliveryDistance.toInt()} KM.\nPlease select a nearer address.",
+                                            try {
 
-                                                Toast.LENGTH_LONG
+                                                CartData.calculatingRoute = true
 
-                                            ).show()
+                                                val routeResult =
+                                                    RoadDistanceRepository.getRoadDistance(
+                                                        restaurantLat,
+                                                        restaurantLng,
+                                                        addressData.latitude,
+                                                        addressData.longitude
+                                                    )
 
-                                            return@addOnSuccessListener
+                                                val freshDistance =
+                                                    routeResult.first
 
-                                        }
-                                        if (!online) {
+                                                val freshDeliveryTime =
+                                                    routeResult.second
 
-                                            Toast.makeText(
+                                                CartData.selectedDistanceKm =
+                                                    freshDistance
 
-                                                context,
+                                                CartData.deliveryTime =
+                                                    freshDeliveryTime
 
-                                                "❌ Restaurant is currently closed",
+                                                CartData.calculatingRoute =
+                                                    false
 
-                                                Toast.LENGTH_LONG
+                                                if (freshDistance <= 0.0) {
 
-                                            ).show()
+                                                    isPlacingOrder = false
+                                                    unavailableMessage =
+                                                        "Unable to calculate the delivery distance. Please try again."
+                                                    showUnavailableDialog = true
 
-                                        } else {
+                                                    return@launch
+                                                }
 
-                                            db.collection("restaurants")
-                                                .document(restaurantId)
-                                                .collection("menu")
-                                                .get()
+                                                if (
+                                                    freshDistance >
+                                                    freshMaxDistance
+                                                ) {
 
-                                                .addOnSuccessListener { result ->
+                                                    isPlacingOrder = false
 
-                                                    val unavailableItems =
-                                                        mutableListOf<String>()
-
-                                                    CartData.items.forEach { cartItem ->
-
-                                                        val menuDoc =
-                                                            result.documents.firstOrNull {
-
-                                                                it.getString("name") ==
-                                                                        cartItem.item.name
-
-                                                            }
-
-                                                        if (menuDoc == null) {
-
-                                                            unavailableItems.add(
-                                                                cartItem.item.name
+                                                    unavailableMessage =
+                                                        "This address is %.1f KM away.\n\nRestaurant delivers only within %.1f KM. Please select a nearer address."
+                                                            .format(
+                                                                freshDistance,
+                                                                freshMaxDistance
                                                             )
 
-                                                        } else {
+                                                    showUnavailableDialog = true
+                                                    return@launch
+                                                }
 
-                                                            val visible =
+                                                var freeKm = 0
+
+                                                freeDeliveryRules.forEach { rule ->
+
+                                                    val minOrder =
+                                                        (rule["minOrder"] as? Number)
+                                                            ?.toInt() ?: 0
+
+                                                    val km =
+                                                        (rule["freeKm"] as? Number)
+                                                            ?.toInt() ?: 0
+
+                                                    if (
+                                                        itemTotal >= minOrder &&
+                                                        km > freeKm
+                                                    ) {
+                                                        freeKm = km
+                                                    }
+                                                }
+
+                                                val extraKm =
+                                                    (freshDistance - freeKm)
+                                                        .coerceAtLeast(0.0)
+
+                                                val freshDeliveryCharge =
+                                                    ceil(
+                                                        extraKm *
+                                                                deliveryPerKm
+                                                    ).toInt()
+
+                                                deliveryCharge =
+                                                    freshDeliveryCharge
+
+                                                CartData.deliveryFee.value =
+                                                    freshDeliveryCharge
+
+                                                db.collection("restaurants")
+                                                    .document(restaurantId)
+                                                    .collection("menu")
+                                                    .get()
+                                                    .addOnSuccessListener { result ->
+
+                                                        val hiddenItems =
+                                                            mutableListOf<String>()
+
+                                                        val outOfStockItems =
+                                                            mutableListOf<String>()
+
+                                                        val removedItems =
+                                                            mutableListOf<String>()
+
+                                                        CartData.items.forEach { cartItem ->
+
+                                                            val menuDoc =
+                                                                result.documents
+                                                                    .firstOrNull {
+                                                                        it.getString("name")
+                                                                            ?.trim()
+                                                                            ?.equals(
+                                                                                cartItem.item.name.trim(),
+                                                                                ignoreCase = true
+                                                                            ) == true
+                                                                    }
+
+                                                            when {
+
+                                                                menuDoc == null -> {
+                                                                    removedItems.add(
+                                                                        cartItem.item.name
+                                                                    )
+                                                                }
+
                                                                 menuDoc.getBoolean("visible")
-                                                                    ?: true
+                                                                        == false -> {
+                                                                    hiddenItems.add(
+                                                                        cartItem.item.name
+                                                                    )
+                                                                }
 
-                                                            val available =
                                                                 menuDoc.getBoolean("available")
-                                                                    ?: true
-
-                                                            if (
-                                                                !visible ||
-                                                                !available
-                                                            ) {
-
-                                                                unavailableItems.add(
-                                                                    cartItem.item.name
-                                                                )
+                                                                        == false -> {
+                                                                    outOfStockItems.add(
+                                                                        cartItem.item.name
+                                                                    )
+                                                                }
                                                             }
                                                         }
+
+                                                        val problems =
+                                                            mutableListOf<String>()
+
+                                                        if (outOfStockItems.isNotEmpty()) {
+                                                            problems.add(
+                                                                "Out of stock:\n• " +
+                                                                        outOfStockItems
+                                                                            .distinct()
+                                                                            .joinToString("\n• ")
+                                                            )
+                                                        }
+
+                                                        if (hiddenItems.isNotEmpty()) {
+                                                            problems.add(
+                                                                "No longer available:\n• " +
+                                                                        hiddenItems
+                                                                            .distinct()
+                                                                            .joinToString("\n• ")
+                                                            )
+                                                        }
+
+                                                        if (removedItems.isNotEmpty()) {
+                                                            problems.add(
+                                                                "Removed from the menu:\n• " +
+                                                                        removedItems
+                                                                            .distinct()
+                                                                            .joinToString("\n• ")
+                                                            )
+                                                        }
+
+                                                        if (problems.isNotEmpty()) {
+
+                                                            isPlacingOrder = false
+
+                                                            unavailableMessage =
+                                                                problems.joinToString(
+                                                                    separator = "\n\n"
+                                                                ) +
+                                                                        "\n\nPlease remove these items from your cart."
+
+                                                            showUnavailableDialog = true
+                                                            return@addOnSuccessListener
+                                                        }
+
+                                                        isPlacingOrder = false
+                                                        navController.navigate("payment")
+                                                    }
+                                                    .addOnFailureListener {
+
+                                                        isPlacingOrder = false
+
+                                                        Toast.makeText(
+                                                            context,
+                                                            "Unable to verify the menu. Please check your internet and try again.",
+                                                            Toast.LENGTH_LONG
+                                                        ).show()
                                                     }
 
-                                                    if (unavailableItems.isNotEmpty()) {
+                                            } catch (error: Exception) {
 
-                                                        unavailableMessage =
-                                                            "The following items are Out of Stock:\n\n• " +
-                                                                    unavailableItems.joinToString("\n• ") +
-                                                                    "\n\nPlease remove them from your cart before placing your order."
+                                                CartData.calculatingRoute = false
+                                                isPlacingOrder = false
 
-                                                        showUnavailableDialog = true
-
-                                                        return@addOnSuccessListener
-                                                    }
-
-                                                    navController.navigate("payment")
-                                                }
-
-                                                .addOnFailureListener {
-
-                                                    Toast.makeText(
-
-                                                        context,
-
-                                                        "Unable to verify menu. Please try again.",
-
-                                                        Toast.LENGTH_LONG
-
-                                                    ).show()
-                                                }
+                                                Toast.makeText(
+                                                    context,
+                                                    "Unable to calculate the route. Please try again.",
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            }
                                         }
+                                    }
+                                    .addOnFailureListener {
+
+                                        isPlacingOrder = false
+
+                                        Toast.makeText(
+                                            context,
+                                            "Unable to verify the restaurant. Please check your internet and try again.",
+                                            Toast.LENGTH_LONG
+                                        ).show()
                                     }
                             },
                             colors =
@@ -778,7 +929,11 @@ fun CartScreen(
 
                                 text =
 
-                                    if (calculatingRoute)
+                                    if (isPlacingOrder)
+
+                                        "Checking Order..."
+
+                                    else if (calculatingRoute)
 
                                         "Calculating Route..."
 
@@ -1656,6 +1811,264 @@ fun CartScreen(
             }
         }
     }
+}
+
+
+private fun getRestaurantClosedReason(
+    doc: DocumentSnapshot
+): String? {
+
+    val online =
+        doc.getBoolean("online") ?: false
+
+    if (!online) {
+        return "Restaurant is currently offline."
+    }
+
+    val temporaryClosed =
+        doc.getBoolean("temporaryClosed") ?: false
+
+    if (temporaryClosed) {
+
+        val reason =
+            doc.getString("temporaryCloseReason")
+                ?: doc.getString("closeReason")
+                ?: doc.getString("temporaryClosedReason")
+                ?: ""
+
+        return if (reason.isBlank()) {
+            "Restaurant is temporarily closed."
+        } else {
+            "Restaurant is temporarily closed.\n\nReason: $reason"
+        }
+    }
+
+    val isHoliday =
+        doc.getBoolean("isHoliday") ?: false
+
+    if (isHoliday) {
+
+        val holidayReason =
+            doc.getString("holidayReason") ?: ""
+
+        return if (holidayReason.isBlank()) {
+            "Restaurant is closed for a holiday today."
+        } else {
+            "Restaurant is closed today.\n\nReason: $holidayReason"
+        }
+    }
+
+    val weeklySlots =
+        doc.get("weeklySlots") as? Map<*, *>
+            ?: return "Restaurant opening schedule is not available."
+
+    val dayName =
+        SimpleDateFormat(
+            "EEEE",
+            Locale.ENGLISH
+        ).format(java.util.Date())
+
+    val todaySlots =
+        weeklySlots[dayName] as? List<*>
+            ?: emptyList<Any>()
+
+    val now =
+        java.util.Calendar.getInstance()
+
+    val currentMinutes =
+        now.get(java.util.Calendar.HOUR_OF_DAY) * 60 +
+                now.get(java.util.Calendar.MINUTE)
+
+    var nextOpeningMinutes: Int? = null
+
+    todaySlots.forEach { rawSlot ->
+
+        val slot =
+            rawSlot as? Map<*, *>
+                ?: return@forEach
+
+        val startText =
+            slot["start"]?.toString()
+                ?: return@forEach
+
+        val endText =
+            slot["end"]?.toString()
+                ?: return@forEach
+
+        val startMinutes =
+            parseTimeToMinutes(startText)
+                ?: return@forEach
+
+        val endMinutes =
+            parseTimeToMinutes(endText)
+                ?: return@forEach
+
+        val active =
+            if (startMinutes <= endMinutes) {
+                currentMinutes in startMinutes until endMinutes
+            } else {
+                currentMinutes >= startMinutes ||
+                        currentMinutes < endMinutes
+            }
+
+        if (active) {
+            return null
+        }
+
+        if (startMinutes > currentMinutes) {
+
+            if (
+                nextOpeningMinutes == null ||
+                startMinutes < nextOpeningMinutes!!
+            ) {
+                nextOpeningMinutes = startMinutes
+            }
+        }
+    }
+
+    if (nextOpeningMinutes != null) {
+        return "Restaurant is currently closed.\n\nOpens today at ${
+            formatMinutesAsTime(nextOpeningMinutes!!)
+        }."
+    }
+
+    val days =
+        listOf(
+            "Sunday",
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday"
+        )
+
+    val todayIndex =
+        days.indexOf(dayName)
+
+    for (offset in 1..7) {
+
+        val nextDay =
+            days[(todayIndex + offset) % 7]
+
+        val slots =
+            weeklySlots[nextDay] as? List<*>
+                ?: continue
+
+        val firstOpening =
+            slots.mapNotNull { rawSlot ->
+
+                val slot =
+                    rawSlot as? Map<*, *>
+                        ?: return@mapNotNull null
+
+                parseTimeToMinutes(
+                    slot["start"]?.toString() ?: ""
+                )
+            }.minOrNull()
+
+        if (firstOpening != null) {
+            return "Restaurant is currently closed.\n\nOpens $nextDay at ${
+                formatMinutesAsTime(firstOpening)
+            }."
+        }
+    }
+
+    return "Restaurant is currently closed. No upcoming opening slot is available."
+}
+
+private fun parseTimeToMinutes(
+    value: String
+): Int? {
+
+    val cleanValue =
+        value.trim()
+
+    val twentyFourHourParts =
+        cleanValue.split(":")
+
+    if (
+        twentyFourHourParts.size == 2 &&
+        !cleanValue.contains("AM", true) &&
+        !cleanValue.contains("PM", true)
+    ) {
+
+        val hour =
+            twentyFourHourParts[0].toIntOrNull()
+                ?: return null
+
+        val minute =
+            twentyFourHourParts[1].toIntOrNull()
+                ?: return null
+
+        if (
+            hour !in 0..23 ||
+            minute !in 0..59
+        ) {
+            return null
+        }
+
+        return hour * 60 + minute
+    }
+
+    return try {
+
+        val parser =
+            SimpleDateFormat(
+                "h:mm a",
+                Locale.ENGLISH
+            )
+
+        parser.isLenient = false
+
+        val date =
+            parser.parse(
+                cleanValue.uppercase(Locale.ENGLISH)
+            ) ?: return null
+
+        val calendar =
+            java.util.Calendar.getInstance()
+
+        calendar.time = date
+
+        calendar.get(
+            java.util.Calendar.HOUR_OF_DAY
+        ) * 60 +
+                calendar.get(
+                    java.util.Calendar.MINUTE
+                )
+
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun formatMinutesAsTime(
+    minutes: Int
+): String {
+
+    val hour24 =
+        (minutes / 60) % 24
+
+    val minute =
+        minutes % 60
+
+    val suffix =
+        if (hour24 < 12) "AM" else "PM"
+
+    val hour12 =
+        when (val value = hour24 % 12) {
+            0 -> 12
+            else -> value
+        }
+
+    return String.format(
+        Locale.ENGLISH,
+        "%d:%02d %s",
+        hour12,
+        minute,
+        suffix
+    )
 }
 
 @Composable

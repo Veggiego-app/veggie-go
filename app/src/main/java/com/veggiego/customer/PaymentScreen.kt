@@ -67,12 +67,16 @@ fun PaymentScreen(
     var packagingFee by remember {
         mutableStateOf(0)
     }
+    var commissionPercent by remember {
+        mutableStateOf<Double?>(null)
+    }
+
     var riderPerKm by remember {
-        mutableStateOf(10.0)
+        mutableStateOf<Double?>(null)
     }
 
     var minimumRiderPay by remember {
-        mutableStateOf(23.0)
+        mutableStateOf<Double?>(null)
     }
     BackHandler(
 
@@ -112,6 +116,10 @@ fun PaymentScreen(
 
                 restaurantZone =
                     doc.getString("zone") ?: ""
+
+                commissionPercent =
+                    (doc.get("commissionPercent") as? Number)
+                        ?.toDouble()
             }
 
         db.collection("settings")
@@ -121,11 +129,11 @@ fun PaymentScreen(
 
                 riderPerKm =
                     (doc.get("riderPerKm") as? Number)
-                        ?.toDouble() ?: 10.0
+                        ?.toDouble()
 
                 minimumRiderPay =
                     (doc.get("minimumRiderPay") as? Number)
-                        ?.toDouble() ?: 23.0
+                        ?.toDouble()
             }
     }
     Scaffold(
@@ -549,195 +557,268 @@ fun PaymentScreen(
                     }
                     loading = true
 
-                            val orderId =
+                    val orderId =
 
-                                db.collection("orders")
+                        db.collection("orders")
 
-                                    .document().id
+                            .document().id
 
 
-                            val userId =
-                                FirebaseAuth.getInstance()
-                                    .currentUser?.uid ?: ""
+                    val userId =
+                        FirebaseAuth.getInstance()
+                            .currentUser?.uid ?: ""
 
-                            val distanceKm =
-                                CartData.selectedDistanceKm
+                    val distanceKm =
+                        CartData.selectedDistanceKm
 
                     val surgeFee =
                         CartData.surgeFee.value
 
-                    val riderPay =
-                        maxOf(
-                            minimumRiderPay,
-                            distanceKm * riderPerKm
-                        )
+                    val configuredRiderPerKm =
+                        riderPerKm
+
+                    val configuredMinimumRiderPay =
+                        minimumRiderPay
 
                     val finalRiderPay =
-                        ceil(riderPay).toInt() +
-                                surgeFee
+                        if (
+                            configuredRiderPerKm != null &&
+                            configuredMinimumRiderPay != null
+                        ) {
 
-                            val order = hashMapOf(
+                            val calculatedRiderPay =
+                                maxOf(
+                                    configuredMinimumRiderPay,
+                                    distanceKm * configuredRiderPerKm
+                                )
 
-                                "orderId" to orderId,
+                            ceil(calculatedRiderPay).toInt() +
+                                    surgeFee
 
-                                "userId" to userId,
+                        } else {
 
-                                "customerName" to customerName,
-                                "customerPhone" to customerPhone,
+                            null
+                        }
 
-                                "house" to house,
-                                "area" to area,
-                                "city" to city,
-                                "pincode" to pincode,
-                                "landmark" to landmark,
+                    val currentItemTotal =
+                        CartData.totalPrice()
 
-                                "items" to CartData.items.map { cartItem ->
+                    val currentCommissionPercent =
+                        commissionPercent
 
-                                    hashMapOf(
+                    val commissionAmount =
+                        currentCommissionPercent?.let { percent ->
 
-                                        "name" to cartItem.item.name,
+                            currentItemTotal *
+                                    percent / 100.0
+                        }
 
-                                        "quantity" to cartItem.quantity,
+                    val restaurantPayout =
+                        commissionAmount?.let { amount ->
 
-                                        "image" to cartItem.item.image,
+                            currentItemTotal +
+                                    packagingFee -
+                                    amount
+                        }
 
-                                        "description" to cartItem.item.description,
+                    val order = hashMapOf<String, Any?>(
 
-                                        "variant" to (
-                                                cartItem.selectedVariant?.name
-                                                    ?: ""
-                                                ),
+                        "orderId" to orderId,
 
-                                        "variantPrice" to (
-                                                cartItem.selectedVariant?.price
-                                                    ?: cartItem.item.price
-                                                ),
+                        "userId" to userId,
 
-                                        "addons" to
-                                                cartItem.selectedAddons.map {
+                        "customerName" to customerName,
+                        "customerPhone" to customerPhone,
 
-                                                    hashMapOf(
+                        "house" to house,
+                        "area" to area,
+                        "city" to city,
+                        "pincode" to pincode,
+                        "landmark" to landmark,
 
-                                                        "name" to it.name,
+                        "items" to CartData.items.map { cartItem ->
 
-                                                        "price" to it.price
-                                                    )
-                                                },
+                            hashMapOf(
 
-                                        "itemTotal" to
-                                                cartItem.totalPrice(),
+                                "name" to cartItem.item.name,
 
-                                        "category" to
-                                                cartItem.item.category
-                                    )
-                                },
+                                "quantity" to cartItem.quantity,
 
-                                "total" to totalAmount,
+                                "image" to cartItem.item.image,
 
-                                "itemTotal" to CartData.totalPrice(),
+                                "description" to cartItem.item.description,
 
-                                "packagingFee" to packagingFee,
+                                "variant" to (
+                                        cartItem.selectedVariant?.name
+                                            ?: ""
+                                        ),
 
-                                "deliveryFee" to CartData.deliveryFee.value,
+                                "variantPrice" to (
+                                        cartItem.selectedVariant?.price
+                                            ?: cartItem.item.price
+                                        ),
 
-                                "surgeFee" to CartData.surgeFee.value,
+                                "addons" to
+                                        cartItem.selectedAddons.map {
 
-                                "surgeReason" to CartData.surgeReason.value,
+                                            hashMapOf(
 
-                                "distanceKm" to distanceKm,
+                                                "name" to it.name,
 
-                                "riderPerKm" to riderPerKm,
+                                                "price" to it.price
+                                            )
+                                        },
 
-                                "minimumRiderPay" to minimumRiderPay,
+                                "itemTotal" to
+                                        cartItem.totalPrice(),
 
-                                "riderPay" to finalRiderPay,
-
-                                "platformFee" to CartData.platformFee.value,
-
-                                "gst" to CartData.gst.value,
-                                "gstOnItems" to CartData.gstOnItems.value,
-
-                                "gstOnPackaging" to CartData.gstOnPackaging.value,
-
-                                "gstOnPlatform" to CartData.gstOnPlatform.value,
-
-                                "gstOnDelivery" to CartData.gstOnDelivery.value,
-
-                                "discount" to 0,
-
-                                "tip" to CartData.riderTip.value,
-
-                                "status" to "PENDING",
-
-                                "deliveryStatus" to "PENDING",
-
-                                "paymentMethod" to selectedPaymentMethod,
-
-                                "restaurantId" to
-                                        CartData.currentRestaurantId.value,
-
-                                "restaurantName" to
-                                        CartData.currentRestaurantName.value,
-
-                                "restaurantZone" to restaurantZone,
-
-                                "restaurantLat" to restaurantLat,
-
-                                "restaurantLng" to restaurantLng,
-
-                                "timestamp" to
-                                        System.currentTimeMillis(),
-
-                                "customerLat" to
-                                        AddressData.selectedAddress.value?.latitude,
-
-                                "customerLng" to
-                                        AddressData.selectedAddress.value?.longitude,
-
-                                "riderId" to "",
-
-                                "riderName" to "",
-
-                                "riderPhone" to "",
-
-                                "riderAssigned" to false
+                                "category" to
+                                        cartItem.item.category
                             )
+                        },
 
-                            db.collection("orders")
-                                .document(orderId)
-                                .set(order)
+                        "total" to totalAmount,
 
-                                .addOnSuccessListener {
+                        "itemTotal" to currentItemTotal,
 
-                                    loading = false
+                        "packagingFee" to packagingFee,
 
-                                    CartData.clearCart()
+                        "commissionSnapshotAvailable" to
+                                (currentCommissionPercent != null),
 
-                                    Toast.makeText(
-                                        navController.context,
-                                        "Order Placed",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                        "deliveryFee" to CartData.deliveryFee.value,
 
-                                    navController.navigate(
-                                        "success/$orderId"
-                                    ) {
-                                        popUpTo("cart") {
-                                            inclusive = true
-                                        }
-                                        launchSingleTop = true
-                                    }
+                        "surgeFee" to CartData.surgeFee.value,
+
+                        "surgeReason" to CartData.surgeReason.value,
+
+                        "distanceKm" to distanceKm,
+
+                        "riderPaySnapshotAvailable" to
+                                (
+                                        configuredRiderPerKm != null &&
+                                                configuredMinimumRiderPay != null &&
+                                                finalRiderPay != null
+                                        ),
+
+                        "platformFee" to CartData.platformFee.value,
+
+                        "gst" to CartData.gst.value,
+                        "gstOnItems" to CartData.gstOnItems.value,
+
+                        "gstOnPackaging" to CartData.gstOnPackaging.value,
+
+                        "gstOnPlatform" to CartData.gstOnPlatform.value,
+
+                        "gstOnDelivery" to CartData.gstOnDelivery.value,
+
+                        "discount" to 0,
+
+                        "tip" to CartData.riderTip.value,
+
+                        "status" to "PENDING",
+
+                        "deliveryStatus" to "PENDING",
+
+                        "paymentMethod" to selectedPaymentMethod,
+
+                        "restaurantId" to
+                                CartData.currentRestaurantId.value,
+
+                        "restaurantName" to
+                                CartData.currentRestaurantName.value,
+
+                        "restaurantZone" to restaurantZone,
+
+                        "restaurantLat" to restaurantLat,
+
+                        "restaurantLng" to restaurantLng,
+
+                        "timestamp" to
+                                System.currentTimeMillis(),
+
+                        "customerLat" to
+                                AddressData.selectedAddress.value?.latitude,
+
+                        "customerLng" to
+                                AddressData.selectedAddress.value?.longitude,
+
+                        "riderId" to "",
+
+                        "riderName" to "",
+
+                        "riderPhone" to "",
+
+                        "riderAssigned" to false
+                    )
+
+                    if (
+                        currentCommissionPercent != null &&
+                        commissionAmount != null &&
+                        restaurantPayout != null
+                    ) {
+
+                        order["commissionPercent"] =
+                            currentCommissionPercent
+
+                        order["commissionAmount"] =
+                            commissionAmount
+
+                        order["restaurantPayout"] =
+                            restaurantPayout
+                    }
+
+                    if (
+                        configuredRiderPerKm != null &&
+                        configuredMinimumRiderPay != null &&
+                        finalRiderPay != null
+                    ) {
+
+                        order["riderPerKm"] =
+                            configuredRiderPerKm
+
+                        order["minimumRiderPay"] =
+                            configuredMinimumRiderPay
+
+                        order["riderPay"] =
+                            finalRiderPay
+                    }
+
+                    db.collection("orders")
+                        .document(orderId)
+                        .set(order)
+
+                        .addOnSuccessListener {
+
+                            loading = false
+
+                            CartData.clearCart()
+
+                            Toast.makeText(
+                                navController.context,
+                                "Order Placed",
+                                Toast.LENGTH_SHORT
+                            ).show()
+
+                            navController.navigate(
+                                "success/$orderId"
+                            ) {
+                                popUpTo("cart") {
+                                    inclusive = true
                                 }
+                                launchSingleTop = true
+                            }
+                        }
 
-                                .addOnFailureListener {
+                        .addOnFailureListener {
 
-                                    loading = false
+                            loading = false
 
-                                    Toast.makeText(
-                                        navController.context,
-                                        "Failed: ${it.message}",
-                                        Toast.LENGTH_LONG
-                                    ).show()
+                            Toast.makeText(
+                                navController.context,
+                                "Failed: ${it.message}",
+                                Toast.LENGTH_LONG
+                            ).show()
                         }
                 },
 

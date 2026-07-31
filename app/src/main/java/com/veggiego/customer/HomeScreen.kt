@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,9 +33,6 @@ import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 import androidx.compose.material.icons.filled.Close
 import android.location.Location
-import kotlin.math.roundToInt
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.activity.compose.BackHandler
 import android.content.Intent
 import androidx.compose.ui.platform.LocalContext
@@ -84,11 +82,6 @@ fun HomeScreen(
 
     val scope = rememberCoroutineScope()
 
-    var allFoodSuggestions by remember {
-
-        mutableStateOf<List<SearchSuggestion>>(emptyList())
-    }
-
     var menuCache by remember {
 
         mutableStateOf<List<SearchSuggestion>>(
@@ -96,6 +89,20 @@ fun HomeScreen(
             emptyList()
 
         )
+    }
+
+    val restaurantPageSize = 20
+
+    var visibleRestaurantCount by remember {
+        mutableIntStateOf(restaurantPageSize)
+    }
+
+    var isSearchLoading by remember {
+        mutableStateOf(false)
+    }
+
+    var menuCacheAddressKey by remember {
+        mutableStateOf("")
     }
 
     var searchText by remember {
@@ -106,6 +113,18 @@ fun HomeScreen(
     var isLoading by remember {
 
         mutableStateOf(true)
+    }
+
+    // One shared minute ticker keeps weekly-slot status fresh without Firestore writes.
+    var currentMinuteTick by remember {
+        mutableLongStateOf(System.currentTimeMillis() / 60_000L)
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000L)
+            currentMinuteTick = System.currentTimeMillis() / 60_000L
+        }
     }
 
     var selectedFilter by remember {
@@ -197,30 +216,26 @@ fun HomeScreen(
             .getInstance()
             .currentUser
             ?.uid ?: ""
-    LaunchedEffect(Unit) {
+    DisposableEffect(Unit) {
 
-        db.collection("settings")
-
+        val registration = db.collection("settings")
             .document("app")
-
-            .addSnapshotListener { snapshot, error ->
+            .addSnapshotListener { snapshot, _ ->
 
                 if (snapshot == null) {
                     return@addSnapshotListener
                 }
 
                 maintenanceMode =
-
-                    snapshot.getBoolean(
-                        "maintenanceMode"
-                    ) ?: false
+                    snapshot.getBoolean("maintenanceMode") ?: false
 
                 maintenanceMessage =
-
-                    snapshot.getString(
-                        "maintenanceMessage"
-                    ) ?: ""
+                    snapshot.getString("maintenanceMessage") ?: ""
             }
+
+        onDispose {
+            registration.remove()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -274,201 +289,71 @@ fun HomeScreen(
             isAddressChecked = true
         }
     }
-    // ✅ FIREBASE
+    // ✅ RESTAURANTS: realtime status stays unchanged, listener is cleaned up safely.
+    DisposableEffect(Unit) {
 
-    LaunchedEffect(Unit) {
-
-        db.collection("restaurants")
-
-            .whereEqualTo(
-                "status",
-                "APPROVED"
-            )
-
+        val registration = db.collection("restaurants")
+            .whereEqualTo("status", "APPROVED")
             .addSnapshotListener { value, error ->
 
-                if (error != null)
+                if (error != null) {
+                    isLoading = false
                     return@addSnapshotListener
+                }
 
-                restaurantList =
-
-                    value?.documents?.mapNotNull { doc ->
-
-                        try {
-
-                            RestaurantData(
-
-                                id = doc.id,
-
-                                name =
-                                    doc.getString("name") ?: "",
-
-                                category =
-                                    doc.getString("category") ?: "",
-
-                                imageUrl =
-                                    doc.getString("logoUrl")
-                                        ?: doc.getString("imageUrl")
-                                        ?: "",
-
-                                rating =
-                                    doc.get("rating")
-                                        ?.toString() ?: "4.5",
-
-                                deliveryTime =
-                                    doc.getString("deliveryTime")
-                                        ?: "20-30 min",
-
-                                offer =
-                                    doc.getString("offer") ?: "",
-
-                                isPureVeg =
-                                    doc.getBoolean("isPureVeg")
-                                        ?: true,
-
-                                autoOpen =
-                                    doc.getBoolean("autoOpen")
-                                        ?: false,
-
-                                liveStatus =
-                                    doc.getString("liveStatus")
-                                        ?: "",
-
-                                isHoliday =
-                                    doc.getBoolean("isHoliday")
-                                        ?: false,
-
-                                online =
-                                    doc.getBoolean("online")
-                                        ?: true,
-
-                                temporaryClosed =
-                                    doc.getBoolean("temporaryClosed")
-                                        ?: false,
-
-                                openingText =
-                                    doc.getString("openingText")
-                                        ?: "",
-
-                                lat =
-                                    doc.getDouble("lat")
-                                        ?: 0.0,
-
-                                lng =
-                                    doc.getDouble("lng")
-                                        ?: 0.0,
-
-                                displayOrder =
-                                    doc.getLong("displayOrder")
-                                        ?.toInt()
-                                        ?: 999999
-                            )
-
-                        } catch (e: Exception) {
-
-                            null
-                        }
-
+                restaurantList = value?.documents?.mapNotNull { doc ->
+                    try {
+                        RestaurantData(
+                            id = doc.id,
+                            name = doc.getString("name") ?: "",
+                            category = doc.getString("category") ?: "",
+                            imageUrl = doc.getString("logoUrl")
+                                ?: doc.getString("imageUrl")
+                                ?: "",
+                            rating = doc.get("rating")?.toString() ?: "4.5",
+                            deliveryTime = doc.getString("deliveryTime") ?: "20-30 min",
+                            offer = doc.getString("offer") ?: "",
+                            isPureVeg = doc.getBoolean("isPureVeg") ?: true,
+                            autoOpen = doc.getBoolean("autoOpen") ?: false,
+                            liveStatus = doc.getString("liveStatus") ?: "",
+                            isHoliday = doc.getBoolean("isHoliday") ?: false,
+                            online = doc.getBoolean("online") ?: true,
+                            temporaryClosed = doc.getBoolean("temporaryClosed") ?: false,
+                            openingText = doc.getString("openingText") ?: "",
+                            weeklySlots = parseRestaurantWeeklySlots(doc.get("weeklySlots")),
+                            lat = doc.getDouble("lat") ?: 0.0,
+                            lng = doc.getDouble("lng") ?: 0.0,
+                            displayOrder = doc.getLong("displayOrder")?.toInt() ?: 999999
+                        )
+                    } catch (_: Exception) {
+                        null
                     }
-                        ?.sortedBy { restaurant ->
-
-                            restaurant.displayOrder
-
-                        }
-                        ?: emptyList()
+                }?.sortedBy { it.displayOrder } ?: emptyList()
 
                 isLoading = false
             }
+
+        onDispose {
+            registration.remove()
+        }
     }
-    LaunchedEffect(Unit) {
 
-        val tempFoods = mutableListOf<SearchSuggestion>()
-
-        db.collection("restaurants")
-
-            .whereEqualTo(
-                "status",
-                "APPROVED"
-            )
-
-            .get()
-
-            .addOnSuccessListener { restaurants ->
-
-                var completed = 0
-
-                restaurants.documents.forEach { restaurant ->
-
-                    db.collection("restaurants")
-
-                        .document(restaurant.id)
-
-                        .collection("menu")
-
-                        .get()
-
-                        .addOnSuccessListener { menu ->
-
-                            menu.documents.forEach { item ->
-
-                                val visible =
-                                    item.getBoolean("visible") ?: true
-
-                                if (!visible) {
-                                    return@forEach
-                                }
-
-                                tempFoods.add(
-
-                                    SearchSuggestion(
-
-                                        type = "food",
-
-                                        title =
-                                            item.getString("name") ?: "",
-
-                                        restaurantId =
-                                            restaurant.id,
-
-                                        restaurantName =
-                                            restaurant.getString("name") ?: "",
-
-                                        restaurantLogo =
-                                            restaurant.getString("logoUrl") ?: ""
-
-                                    )
-
-                                )
-                            }
-
-                            completed++
-
-                            if (
-
-                                completed == restaurants.size()
-
-                            ) {
-
-                                menuCache = tempFoods
-                            }
-
-                        }
-
-                }
-
-            }
-
-    }
+    // Menu is intentionally NOT downloaded when Home opens.
+    // It is loaded only after the customer starts searching.
 
     // ✅ LIVE SEARCH
-    LaunchedEffect(searchText, restaurantList, menuCache, AddressData.selectedAddress.value) {
+    LaunchedEffect(
+        searchText,
+        restaurantList,
+        menuCache,
+        AddressData.selectedAddress.value
+    ) {
 
         searchJob?.cancel()
 
         if (searchText.trim().length < 2) {
-
             searchSuggestions = emptyList()
-
+            isSearchLoading = false
             return@LaunchedEffect
         }
 
@@ -477,154 +362,130 @@ fun HomeScreen(
             delay(300)
 
             val query = searchText.trim()
+            val currentAddress = AddressData.selectedAddress.value
 
-            val currentAddress =
-                AddressData.selectedAddress.value
+            val nearbyRestaurants = restaurantList.mapNotNull { restaurant ->
+                if (
+                    currentAddress == null ||
+                    restaurant.lat == 0.0 ||
+                    restaurant.lng == 0.0
+                ) {
+                    null
+                } else {
+                    val km = calculateDistanceKm(
+                        restaurant.lat,
+                        restaurant.lng,
+                        currentAddress.latitude,
+                        currentAddress.longitude
+                    )
 
-            val nearbyRestaurants =
-                restaurantList.mapNotNull { restaurant ->
-
-                    if (
-                        currentAddress == null ||
-                        restaurant.lat == 0.0 ||
-                        restaurant.lng == 0.0
-                    ) {
-
-                        null
-
-                    } else {
-
-                        val km =
-                            calculateDistanceKm(
-                                restaurant.lat,
-                                restaurant.lng,
-                                currentAddress.latitude,
-                                currentAddress.longitude
-                            )
-
-                        if (km <= 15.0) {
-                            restaurant
-                        } else {
-                            null
-                        }
-                    }
+                    if (km <= 15.0) restaurant else null
                 }
+            }
 
-            val allowedRestaurantIds =
-                nearbyRestaurants.map { it.id }.toSet()
+            val allowedRestaurantIds = nearbyRestaurants.map { it.id }.toSet()
 
-            // -----------------------------
-            // RESTAURANT SEARCH
-            // -----------------------------
-
-            val restaurantSuggestions =
-                mutableListOf<SearchSuggestion>()
-
-            nearbyRestaurants.forEach { restaurant ->
-
+            val restaurantSuggestions = nearbyRestaurants.mapNotNull { restaurant ->
                 val name = restaurant.name.trim()
-
                 val score = when {
-
                     name.equals(query, true) -> 100
-
                     name.startsWith(query, true) -> 90
-
                     name.contains(query, true) -> 80
-
                     else -> 0
                 }
 
-                if (score > 0) {
-
-                    restaurantSuggestions.add(
-
-                        SearchSuggestion(
-
-                            type = "restaurant",
-
-                            title = restaurant.name,
-
-                            restaurantId = restaurant.id,
-
-                            restaurantName = restaurant.name,
-
-                            restaurantLogo = restaurant.imageUrl,
-
-                            score = score
-                        )
+                if (score == 0) {
+                    null
+                } else {
+                    SearchSuggestion(
+                        type = "restaurant",
+                        title = restaurant.name,
+                        restaurantId = restaurant.id,
+                        restaurantName = restaurant.name,
+                        restaurantLogo = restaurant.imageUrl,
+                        score = score
                     )
                 }
             }
 
-            // -----------------------------
-            // FOOD SEARCH
-            // -----------------------------
+            val addressKey = currentAddress?.let {
+                "${it.latitude}_${it.longitude}"
+            } ?: "no_address"
 
-            val foodMap =
-                hashMapOf<String, MutableList<SearchSuggestion>>()
+            // Load only nearby restaurant menus and only when search is used.
+            if (menuCacheAddressKey != addressKey) {
+                menuCache = emptyList()
+                menuCacheAddressKey = addressKey
+            }
+
+            if (menuCache.isEmpty() && nearbyRestaurants.isNotEmpty()) {
+                isSearchLoading = true
+
+                val loadedFoods = mutableListOf<SearchSuggestion>()
+                var completedRequests = 0
+
+                nearbyRestaurants.forEach { restaurant ->
+                    db.collection("restaurants")
+                        .document(restaurant.id)
+                        .collection("menu")
+                        .get()
+                        .addOnCompleteListener { task ->
+
+                            if (task.isSuccessful) {
+                                task.result?.documents?.forEach { item ->
+                                    val visible = item.getBoolean("visible") ?: true
+
+                                    if (visible) {
+                                        loadedFoods.add(
+                                            SearchSuggestion(
+                                                type = "food",
+                                                title = item.getString("name") ?: "",
+                                                restaurantId = restaurant.id,
+                                                restaurantName = restaurant.name,
+                                                restaurantLogo = restaurant.imageUrl
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
+                            completedRequests++
+
+                            if (completedRequests == nearbyRestaurants.size) {
+                                menuCache = loadedFoods.toList()
+                                isSearchLoading = false
+                            }
+                        }
+                }
+            }
+
+            val foodMap = hashMapOf<String, MutableList<SearchSuggestion>>()
 
             menuCache
-                .filter {
-                    allowedRestaurantIds.contains(it.restaurantId)
-                }
+                .filter { allowedRestaurantIds.contains(it.restaurantId) }
                 .forEach { food ->
-
                     val score = when {
-
                         food.title.equals(query, true) -> 70
-
                         food.title.startsWith(query, true) -> 60
-
                         food.title.contains(query, true) -> 50
-
                         else -> 0
                     }
 
                     if (score > 0) {
-
-                        val list =
-                            foodMap.getOrPut(food.title) {
-
-                                mutableListOf()
-                            }
-
-                        list.add(
-
-                            food.copy(
-
-                                score = score
-                            )
-                        )
+                        foodMap.getOrPut(food.title) { mutableListOf() }
+                            .add(food.copy(score = score))
                     }
                 }
 
-            val finalFoods =
-                mutableListOf<SearchSuggestion>()
-
-            foodMap.forEach { (_, list) ->
-
-                val best = list.maxBy { it.score }
-
-                finalFoods.add(
-
-                    best.copy(
-
-                        restaurantCount = list.size
-                    )
-                )
+            val finalFoods = foodMap.values.map { list ->
+                list.maxBy { it.score }.copy(restaurantCount = list.size)
             }
 
-            searchSuggestions =
-
-                (restaurantSuggestions + finalFoods)
-
-                    .sortedByDescending {
-
-                        it.score
-                    }
+            searchSuggestions = (restaurantSuggestions + finalFoods)
+                .sortedByDescending { it.score }
         }
     }
+
     val customerAddress =
 
         AddressData
@@ -715,6 +576,13 @@ fun HomeScreen(
                 restaurantsWithDistance
 
         }
+
+    LaunchedEffect(selectedFilter, customerAddress, filteredRestaurants.size) {
+        visibleRestaurantCount = restaurantPageSize
+    }
+
+    val visibleRestaurants = filteredRestaurants.take(visibleRestaurantCount)
+
     if (maintenanceMode) {
 
         Box(
@@ -1236,13 +1104,27 @@ fun HomeScreen(
                     }
                 }
             }
+            if (searchText.trim().length >= 2 && isSearchLoading) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+            }
+
             if (
 
                 searchText.isNotBlank()
 
                 &&
 
-                searchSuggestions.isEmpty()
+                searchSuggestions.isEmpty() &&
+                !isSearchLoading
 
             ) {
 
@@ -1621,23 +1503,31 @@ fun HomeScreen(
 
                 } else {
 
-                    items(filteredRestaurants) { restaurant ->
+                    itemsIndexed(
+                        items = visibleRestaurants,
+                        key = { _, restaurant -> restaurant.id }
+                    ) { index, restaurant ->
 
                         RestaurantCard(
-                        restaurant = restaurant,
-
-                        onRestaurantClick = { restaurantId ->
-
-                            navController.navigate(
-
-                                "restaurant_detail/$restaurantId"
-
-                            )
-                        }
-
+                            restaurant = restaurant,
+                            timeVersion = currentMinuteTick,
+                            onRestaurantClick = { restaurantId ->
+                                navController.navigate(
+                                    "restaurant_detail/$restaurantId"
+                                )
+                            }
                         )
 
-
+                        if (
+                            index == visibleRestaurants.lastIndex &&
+                            visibleRestaurantCount < filteredRestaurants.size
+                        ) {
+                            LaunchedEffect(index, filteredRestaurants.size) {
+                                visibleRestaurantCount =
+                                    (visibleRestaurantCount + restaurantPageSize)
+                                        .coerceAtMost(filteredRestaurants.size)
+                            }
+                        }
                     }
                 }
             }
@@ -1658,20 +1548,20 @@ fun HomeScreen(
                 navController
             )
         }
-           Box(
+        Box(
 
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
 
-            ) {
+        ) {
 
-                BottomBar(
-                    navController
-                )
-            }
+            BottomBar(
+                navController
+            )
         }
     }
+}
 @Composable
 fun ShareAutoBanner() {
 

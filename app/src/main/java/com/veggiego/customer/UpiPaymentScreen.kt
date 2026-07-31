@@ -38,15 +38,19 @@ fun UpiPaymentScreen(
     val db = FirebaseFirestore.getInstance()
 
     var riderPerKm by remember {
-        mutableStateOf(10.0)
+        mutableStateOf<Double?>(null)
     }
 
     var minimumRiderPay by remember {
-        mutableStateOf(23.0)
+        mutableStateOf<Double?>(null)
     }
 
     var restaurantZone by remember {
         mutableStateOf("")
+    }
+
+    var commissionPercent by remember {
+        mutableStateOf<Double?>(null)
     }
 
     LaunchedEffect(Unit) {
@@ -58,11 +62,11 @@ fun UpiPaymentScreen(
 
                 riderPerKm =
                     (doc.get("riderPerKm") as? Number)
-                        ?.toDouble() ?: 10.0
+                        ?.toDouble()
 
                 minimumRiderPay =
                     (doc.get("minimumRiderPay") as? Number)
-                        ?.toDouble() ?: 23.0
+                        ?.toDouble()
             }
         db.collection("restaurants")
             .document(CartData.currentRestaurantId.value)
@@ -71,6 +75,10 @@ fun UpiPaymentScreen(
 
                 restaurantZone =
                     doc.getString("zone") ?: ""
+
+                commissionPercent =
+                    (doc.get("commissionPercent") as? Number)
+                        ?.toDouble()
             }
     }
 
@@ -230,15 +238,55 @@ fun UpiPaymentScreen(
                 val surgeFee =
                     CartData.surgeFee.value
 
-                val riderPay =
-                    maxOf(
-                        minimumRiderPay,
-                        distanceKm * riderPerKm
-                    )
+                val configuredRiderPerKm =
+                    riderPerKm
+
+                val configuredMinimumRiderPay =
+                    minimumRiderPay
 
                 val finalRiderPay =
-                    ceil(riderPay).toInt() +
-                            surgeFee
+                    if (
+                        configuredRiderPerKm != null &&
+                        configuredMinimumRiderPay != null
+                    ) {
+
+                        val calculatedRiderPay =
+                            maxOf(
+                                configuredMinimumRiderPay,
+                                distanceKm * configuredRiderPerKm
+                            )
+
+                        ceil(calculatedRiderPay).toInt() +
+                                surgeFee
+
+                    } else {
+
+                        null
+                    }
+
+                val currentItemTotal =
+                    CartData.totalPrice()
+
+                val currentPackagingFee =
+                    CartData.packagingFee.value
+
+                val currentCommissionPercent =
+                    commissionPercent
+
+                val commissionAmount =
+                    currentCommissionPercent?.let { percent ->
+
+                        currentItemTotal *
+                                percent / 100.0
+                    }
+
+                val restaurantPayout =
+                    commissionAmount?.let { amount ->
+
+                        currentItemTotal +
+                                currentPackagingFee -
+                                amount
+                    }
 
                 val order =
                     hashMapOf<String, Any>(
@@ -307,9 +355,13 @@ fun UpiPaymentScreen(
                                 },
 
                         "total" to totalAmount,
-                        "itemTotal" to CartData.totalPrice(),
 
-                        "packagingFee" to CartData.packagingFee.value,
+                        "itemTotal" to currentItemTotal,
+
+                        "packagingFee" to currentPackagingFee,
+
+                        "commissionSnapshotAvailable" to
+                                (currentCommissionPercent != null),
 
                         "deliveryFee" to CartData.deliveryFee.value,
 
@@ -319,11 +371,12 @@ fun UpiPaymentScreen(
 
                         "distanceKm" to distanceKm,
 
-                        "riderPerKm" to riderPerKm,
-
-                        "minimumRiderPay" to minimumRiderPay,
-
-                        "riderPay" to finalRiderPay,
+                        "riderPaySnapshotAvailable" to
+                                (
+                                        configuredRiderPerKm != null &&
+                                                configuredMinimumRiderPay != null &&
+                                                finalRiderPay != null
+                                        ),
 
                         "platformFee" to CartData.platformFee.value,
 
@@ -374,6 +427,38 @@ fun UpiPaymentScreen(
                         "timestamp" to
                                 System.currentTimeMillis()
                     )
+
+                if (
+                    currentCommissionPercent != null &&
+                    commissionAmount != null &&
+                    restaurantPayout != null
+                ) {
+
+                    order["commissionPercent"] =
+                        currentCommissionPercent
+
+                    order["commissionAmount"] =
+                        commissionAmount
+
+                    order["restaurantPayout"] =
+                        restaurantPayout
+                }
+
+                if (
+                    configuredRiderPerKm != null &&
+                    configuredMinimumRiderPay != null &&
+                    finalRiderPay != null
+                ) {
+
+                    order["riderPerKm"] =
+                        configuredRiderPerKm
+
+                    order["minimumRiderPay"] =
+                        configuredMinimumRiderPay
+
+                    order["riderPay"] =
+                        finalRiderPay
+                }
 
                 db.collection("orders")
                     .document(orderId)

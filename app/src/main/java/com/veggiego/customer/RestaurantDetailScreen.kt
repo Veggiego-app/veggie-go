@@ -133,6 +133,12 @@ fun RestaurantDetailScreen(
                                 ?: value.getString("imageUrl")
                                 ?: "",
 
+                        bannerUrl =
+                            value.getString("bannerUrl")
+                                ?: value.getString("logoUrl")
+                                ?: value.getString("imageUrl")
+                                ?: "",
+
                         rating =
                             value.get("rating")
                                 ?.toString() ?: "4.5",
@@ -170,6 +176,9 @@ fun RestaurantDetailScreen(
 
                         openingText =
                             value.getString("openingText") ?: "",
+
+                        weeklySlots =
+                            parseRestaurantWeeklySlots(value.get("weeklySlots")),
 
                         lat =
                             value.getDouble("lat") ?: 0.0,
@@ -424,6 +433,17 @@ fun RestaurantDetailScreen(
             }
 
     }
+    var currentMinuteTick by remember {
+        mutableLongStateOf(System.currentTimeMillis() / 60_000L)
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(60_000L)
+            currentMinuteTick = System.currentTimeMillis() / 60_000L
+        }
+    }
+
     val currentTime =
 
         java.text.SimpleDateFormat(
@@ -432,6 +452,11 @@ fun RestaurantDetailScreen(
         ).format(
             java.util.Date()
         )
+
+    // Customer app calculates restaurant availability directly from weeklySlots.
+    val restaurantOpenNow = remember(restaurant, currentMinuteTick) {
+        isRestaurantOpenNow(restaurant)
+    }
 
     var categoryTimeMap by remember {
 
@@ -883,14 +908,103 @@ fun RestaurantDetailScreen(
         mutableStateOf(setOf<String>())
     }
 
+    // Invisible menu batching:
+    // Customer ko pagination button nahi dikhega.
+    // Har subcategory ke items scroll ke saath automatic batches me render honge.
+    val menuBatchSize = 20
+
+    var visibleItemLimits by remember(restaurantId) {
+        mutableStateOf<Map<String, Int>>(emptyMap())
+    }
+
+    fun menuBatchKey(
+        category: String,
+        subCategory: String
+    ): String {
+        return "$category|||$subCategory"
+    }
+
     fun scrollToMenuTarget(
         target: String,
-        scope: CoroutineScope,
-        collapsedSubCategories: Set<String>
+        scope: CoroutineScope
     ) {
         if (target.isBlank()) return
 
         scope.launch {
+
+            // Direct item search/focus ke case me us item tak ka batch
+            // pehle visible kar dete hain, taaki scroll logic kabhi na toote.
+            val targetMenuItem =
+                menuItems.firstOrNull { item ->
+
+                    item.name.equals(
+                        target,
+                        ignoreCase = true
+                    )
+                }
+
+            if (targetMenuItem != null) {
+
+                val targetCategoryItems =
+                    groupedItems[targetMenuItem.category]
+                        ?.filter { item ->
+
+                            if (targetMenuItem.subCategory == "Others") {
+
+                                item.subCategory.isBlank()
+
+                            } else {
+
+                                item.subCategory ==
+                                        targetMenuItem.subCategory
+                            }
+                        }
+                        ?: emptyList()
+
+                val targetPosition =
+                    targetCategoryItems.indexOfFirst { item ->
+
+                        item.name.equals(
+                            target,
+                            ignoreCase = true
+                        )
+                    }
+
+                if (targetPosition >= 0) {
+
+                    val key =
+                        menuBatchKey(
+                            targetMenuItem.category,
+                            targetMenuItem.subCategory
+                        )
+
+                    val requiredLimit =
+                        targetPosition + 1
+
+                    val currentLimit =
+                        visibleItemLimits[key]
+                            ?: menuBatchSize
+
+                    if (requiredLimit > currentLimit) {
+
+                        visibleItemLimits =
+                            visibleItemLimits.toMutableMap().apply {
+
+                                put(
+                                    key,
+                                    requiredLimit
+                                )
+                            }
+                    }
+
+                    collapsedSubCategories =
+                        collapsedSubCategories -
+                                targetMenuItem.subCategory
+
+                    // LazyColumn ko naye batch compose karne ka samay.
+                    kotlinx.coroutines.delay(80L)
+                }
+            }
 
             var index = 0
 
@@ -960,7 +1074,20 @@ fun RestaurantDetailScreen(
 
                     if (!collapsedSubCategories.contains(subCategory)) {
 
-                        subItems.forEach { menuItem ->
+                        val batchKey =
+                            menuBatchKey(
+                                category,
+                                subCategory
+                            )
+
+                        val visibleLimit =
+                            visibleItemLimits[batchKey]
+                                ?: menuBatchSize
+
+                        val visibleSubItems =
+                            subItems.take(visibleLimit)
+
+                        visibleSubItems.forEach { menuItem ->
 
                             if (
                                 menuItem.name.equals(
@@ -984,6 +1111,12 @@ fun RestaurantDetailScreen(
                             index++
                         }
 
+                        // Automatic next-batch sentinel bhi LazyColumn ka ek item hai.
+                        if (visibleSubItems.size < subItems.size) {
+
+                            index++
+                        }
+
                     }
                 }
             }
@@ -1001,8 +1134,7 @@ fun RestaurantDetailScreen(
 
         scrollToMenuTarget(
             focusItem,
-            this,
-            collapsedSubCategories
+            this
         )
     }
 
@@ -1088,12 +1220,7 @@ fun RestaurantDetailScreen(
                                 vertical = 8.dp
                             )
                     )
-                } else if (
-
-                    restaurant.autoOpen &&
-                    restaurant.online
-
-                ) {
+                } else if (restaurantOpenNow) {
 
                     Text(
 
@@ -1112,9 +1239,7 @@ fun RestaurantDetailScreen(
                     Text(
 
                         text =
-                            formatOpeningText(
-                                restaurant.openingText
-                            ),
+                            "🟠 ${restaurantWeeklyOpeningText(restaurant).uppercase()}",
 
                         color = Color(0xFFFF9800),
 
@@ -1296,15 +1421,7 @@ fun RestaurantDetailScreen(
 
                                 restaurantName = restaurant.name,
 
-                                restaurantOpen =
-
-                                    restaurant.autoOpen &&
-
-                                            restaurant.online &&
-
-                                            !restaurant.temporaryClosed &&
-
-                                            !restaurant.isHoliday,
+                                restaurantOpen = restaurantOpenNow,
 
                                 categoryAvailable =
 
@@ -1626,85 +1743,143 @@ fun RestaurantDetailScreen(
 
                     if (!collapsedSubCategories.contains(subCategory)) {
 
-                    items(subItems) { item ->
+                        val batchKey =
+                            menuBatchKey(
+                                category,
+                                subCategory
+                            )
 
-                        val cartItem =
+                        val visibleLimit =
+                            visibleItemLimits[batchKey]
+                                ?: menuBatchSize
 
-                            CartData.items.find {
+                        val visibleSubItems =
+                            subItems.take(visibleLimit)
 
-                                it.item.name == item.name
+                        items(
+                            items = visibleSubItems,
+                            key = { item ->
 
+                                "$batchKey|||${item.name}"
                             }
+                        ) { item ->
 
-                        MenuItemRow(
+                            val cartItem =
 
-                            item = item,
+                                CartData.items.find {
 
-                            cartItem = cartItem,
-
-                            restaurantId = restaurantId,
-
-                            restaurantName = restaurant.name,
-
-                            restaurantOpen =
-
-                                restaurant.autoOpen &&
-
-                                        restaurant.online &&
-
-                                        !restaurant.temporaryClosed &&
-
-                                        !restaurant.isHoliday,
-                            categoryAvailable =
-
-                                categoryStockMap[item.category] != false,
-                            subCategoryAvailable =
-
-                                subCategoryStockMap[item.subCategory] != false,
-
-                            onAdd = {
-
-                                if (
-
-                                    CartData.currentRestaurantId.value.isNotEmpty()
-
-                                    &&
-
-                                    CartData.currentRestaurantId.value != restaurantId
-
-                                ) {
-
-                                    CartData.clearCart()
+                                    it.item.name == item.name
 
                                 }
 
-                                CartData.addToCart(
+                            MenuItemRow(
 
-                                    restaurantId,
+                                item = item,
 
-                                    restaurant.name,
+                                cartItem = cartItem,
 
-                                    item
+                                restaurantId = restaurantId,
 
+                                restaurantName = restaurant.name,
+
+                                restaurantOpen = restaurantOpenNow,
+                                categoryAvailable =
+
+                                    categoryStockMap[item.category] != false,
+                                subCategoryAvailable =
+
+                                    subCategoryStockMap[item.subCategory] != false,
+
+                                onAdd = {
+
+                                    if (
+
+                                        CartData.currentRestaurantId.value.isNotEmpty()
+
+                                        &&
+
+                                        CartData.currentRestaurantId.value != restaurantId
+
+                                    ) {
+
+                                        CartData.clearCart()
+
+                                    }
+
+                                    CartData.addToCart(
+
+                                        restaurantId,
+
+                                        restaurant.name,
+
+                                        item
+
+                                    )
+
+                                },
+
+                                onIncrease = {
+
+                                    CartData.increase(it)
+
+                                },
+
+                                onDecrease = {
+
+                                    CartData.decrease(it)
+
+                                }
+
+                            )
+
+                        }
+
+                        // Customer neeche pahunchta hai to next 20 items
+                        // background me automatically render ho jate hain.
+                        if (visibleSubItems.size < subItems.size) {
+
+                            item(
+                                key =
+                                    "auto-load-$batchKey-${visibleSubItems.size}"
+                            ) {
+
+                                LaunchedEffect(
+                                    batchKey,
+                                    visibleSubItems.size,
+                                    subItems.size
+                                ) {
+
+                                    kotlinx.coroutines.delay(120L)
+
+                                    val latestLimit =
+                                        visibleItemLimits[batchKey]
+                                            ?: menuBatchSize
+
+                                    if (latestLimit < subItems.size) {
+
+                                        visibleItemLimits =
+                                            visibleItemLimits
+                                                .toMutableMap()
+                                                .apply {
+
+                                                    put(
+                                                        batchKey,
+                                                        minOf(
+                                                            latestLimit +
+                                                                    menuBatchSize,
+                                                            subItems.size
+                                                        )
+                                                    )
+                                                }
+                                    }
+                                }
+
+                                Spacer(
+                                    modifier =
+                                        Modifier.height(1.dp)
                                 )
-
-                            },
-
-                            onIncrease = {
-
-                                CartData.increase(it)
-
-                            },
-
-                            onDecrease = {
-
-                                CartData.decrease(it)
-
                             }
-
-                        )
-
-                    }
+                        }
 
                     }
 
@@ -1900,8 +2075,7 @@ fun RestaurantDetailScreen(
 
                                                 scrollToMenuTarget(
                                                     category,
-                                                    coroutineScope,
-                                                    collapsedSubCategories
+                                                    coroutineScope
                                                 )
 
                                             }
@@ -2022,8 +2196,7 @@ fun RestaurantDetailScreen(
 
                                                 scrollToMenuTarget(
                                                     sub,
-                                                    coroutineScope,
-                                                    collapsedSubCategories
+                                                    coroutineScope
                                                 )
 
                                             }
@@ -2170,7 +2343,9 @@ fun RestaurantHeader(
         AsyncImage(
 
             model =
-                restaurant.imageUrl,
+                restaurant.bannerUrl.ifBlank {
+                    restaurant.imageUrl
+                },
 
             contentDescription = null,
 
