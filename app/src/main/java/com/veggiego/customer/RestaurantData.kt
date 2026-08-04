@@ -160,6 +160,7 @@ fun restaurantWeeklyOpeningText(
                 return when {
                     dayOffset == 0 && differenceMinutes <= 60 -> "Opening in $differenceMinutes mins"
                     dayOffset == 0 -> "Opens at ${format12Hour(slot.start)}"
+                    dayOffset == 1 -> "Opens tomorrow ${format12Hour(slot.start)}"
                     else -> "Opens $day ${format12Hour(slot.start)}"
                 }
             }

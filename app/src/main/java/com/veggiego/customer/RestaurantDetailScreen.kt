@@ -2354,7 +2354,7 @@ fun RestaurantHeader(
                 .height(240.dp),
 
             contentScale =
-                ContentScale.Crop
+                ContentScale.Fit
         )
 
         Box(

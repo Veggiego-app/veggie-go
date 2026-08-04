@@ -12,7 +12,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -53,12 +52,6 @@ fun ChatScreen(
     val coroutineScope =
         rememberCoroutineScope()
 
-    val density =
-        LocalDensity.current
-
-    val imeBottom =
-        WindowInsets.ime.getBottom(density)
-
     LaunchedEffect(Unit) {
 
         FirebaseFirestore
@@ -98,7 +91,7 @@ fun ChatScreen(
             }
     }
 
-    LaunchedEffect(messages.size, imeBottom) {
+    LaunchedEffect(messages.size) {
 
         if (messages.isNotEmpty()) {
 
@@ -304,8 +297,7 @@ fun ChatScreen(
                         top = 4.dp,
                         bottom = 4.dp
                     )
-                    .navigationBarsPadding()
-                    .imePadding(),
+                    .navigationBarsPadding(),
 
             verticalAlignment =
                 Alignment.CenterVertically

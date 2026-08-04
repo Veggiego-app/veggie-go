@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.painterResource
 import androidx.navigation.NavController
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.statusBarsPadding
 import kotlinx.coroutines.Job
@@ -241,53 +242,128 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
 
         if (
-            userId.isNotEmpty() &&
-            AddressData.selectedAddress.value == null
+            userId.isEmpty() ||
+            AddressData.selectedAddress.value != null
         ) {
+            isAddressChecked = true
+            return@LaunchedEffect
+        }
 
+        val userRef =
             db.collection("users")
                 .document(userId)
-                .collection("addresses")
+
+        fun openAddressSelection() {
+
+            isAddressChecked = true
+
+            navController.navigate("select_address") {
+                popUpTo("home") {
+                    inclusive = true
+                }
+                launchSingleTop = true
+            }
+        }
+
+        fun useAddress(address: Address) {
+
+            AddressData.selectedAddress.value = address
+
+            CartData.selectedAddress =
+                "${address.house}, ${address.area}"
+
+            isAddressChecked = true
+        }
+
+        fun loadFirstAddress() {
+
+            userRef.collection("addresses")
                 .limit(1)
                 .get()
-                .addOnSuccessListener {
+                .addOnSuccessListener { result ->
 
-                    val savedAddress =
-                        it.toObjects(Address::class.java)
+                    val firstAddress =
+                        result.documents
+                            .firstOrNull()
+                            ?.let { document ->
 
-                    if (savedAddress.isNotEmpty()) {
+                                document
+                                    .toObject(Address::class.java)
+                                    ?.copy(id = document.id)
+                            }
 
-                        AddressData.selectedAddress.value =
-                            savedAddress.first()
+                    if (firstAddress == null) {
 
-                        isAddressChecked = true
+                        openAddressSelection()
 
                     } else {
 
-                        isAddressChecked = true
+                        useAddress(firstAddress)
 
-                        navController.navigate("select_address") {
-                            popUpTo("home") {
-                                inclusive = true
-                            }
-                        }
+                        userRef.set(
+                            mapOf(
+                                "selectedAddressId" to firstAddress.id
+                            ),
+                            SetOptions.merge()
+                        )
                     }
                 }
                 .addOnFailureListener {
 
-                    isAddressChecked = true
-
-                    navController.navigate("select_address") {
-                        popUpTo("home") {
-                            inclusive = true
-                        }
-                    }
+                    openAddressSelection()
                 }
-
-        } else {
-
-            isAddressChecked = true
         }
+
+        userRef.get()
+            .addOnSuccessListener { userDocument ->
+
+                val selectedAddressId =
+                    userDocument
+                        .getString("selectedAddressId")
+                        .orEmpty()
+
+                if (selectedAddressId.isBlank()) {
+
+                    loadFirstAddress()
+
+                } else {
+
+                    userRef.collection("addresses")
+                        .document(selectedAddressId)
+                        .get()
+                        .addOnSuccessListener { addressDocument ->
+
+                            val savedAddress =
+                                if (addressDocument.exists()) {
+
+                                    addressDocument
+                                        .toObject(Address::class.java)
+                                        ?.copy(id = addressDocument.id)
+
+                                } else {
+
+                                    null
+                                }
+
+                            if (savedAddress == null) {
+
+                                loadFirstAddress()
+
+                            } else {
+
+                                useAddress(savedAddress)
+                            }
+                        }
+                        .addOnFailureListener {
+
+                            loadFirstAddress()
+                        }
+                }
+            }
+            .addOnFailureListener {
+
+                loadFirstAddress()
+            }
     }
     // ✅ RESTAURANTS: realtime status stays unchanged, listener is cleaned up safely.
     DisposableEffect(Unit) {
@@ -551,31 +627,42 @@ fun HomeScreen(
 
         }
 
-    val filteredRestaurants =
+    val restaurantSortCalendar = remember(currentMinuteTick) {
+        java.util.Calendar.getInstance()
+    }
 
+    val filteredRestaurants =
         when (selectedFilter) {
 
             "Pure Veg" ->
-
                 restaurantsWithDistance.filter {
-
                     it.isPureVeg
-
                 }
 
             "Offers" ->
-
                 restaurantsWithDistance.filter {
-
-                    it.offer.isNotEmpty()
-
+                    it.offer.isNotBlank()
                 }
 
             else ->
-
                 restaurantsWithDistance
-
         }
+            .sortedWith(
+                compareBy<RestaurantData> { restaurant ->
+                    if (
+                        isRestaurantOpenNow(
+                            restaurant,
+                            restaurantSortCalendar
+                        )
+                    ) {
+                        0
+                    } else {
+                        1
+                    }
+                }.thenBy { restaurant ->
+                    restaurant.displayOrder
+                }
+            )
 
     LaunchedEffect(selectedFilter, customerAddress, filteredRestaurants.size) {
         visibleRestaurantCount = restaurantPageSize

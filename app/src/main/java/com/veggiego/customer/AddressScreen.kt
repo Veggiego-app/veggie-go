@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import android.location.Location
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -254,6 +255,15 @@ fun AddressScreen(
                                 CartData.selectedAddress =
                                     "${address.house}, ${address.area}"
 
+                                db.collection("users")
+                                    .document(userId)
+                                    .set(
+                                        mapOf(
+                                            "selectedAddressId" to address.id
+                                        ),
+                                        SetOptions.merge()
+                                    )
+
 // ✅ Cart empty hai to restaurant distance calculate mat karo
                                 if (CartData.currentRestaurantId.value.isBlank()) {
 
@@ -382,6 +392,15 @@ fun AddressScreen(
 
                                         CartData.selectedDistanceKm = 0.0
 
+                                        db.collection("users")
+                                            .document(userId)
+                                            .set(
+                                                mapOf(
+                                                    "selectedAddressId" to ""
+                                                ),
+                                                SetOptions.merge()
+                                            )
+
                                         navController.navigate("select_address") {
 
                                             popUpTo("home") {
@@ -393,8 +412,21 @@ fun AddressScreen(
 
                                     } else {
 
-                                        AddressData.selectedAddress.value =
-                                            remaining.first()
+                                        val nextAddress = remaining.first()
+
+                                        AddressData.selectedAddress.value = nextAddress
+
+                                        CartData.selectedAddress =
+                                            "${nextAddress.house}, ${nextAddress.area}"
+
+                                        db.collection("users")
+                                            .document(userId)
+                                            .set(
+                                                mapOf(
+                                                    "selectedAddressId" to nextAddress.id
+                                                ),
+                                                SetOptions.merge()
+                                            )
                                     }
                                 }
                             }
